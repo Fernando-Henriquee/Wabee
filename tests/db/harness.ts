@@ -1,4 +1,5 @@
 import { PGlite } from '@electric-sql/pglite';
+import { btree_gist } from '@electric-sql/pglite/contrib/btree_gist';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,7 +25,7 @@ export interface TestDbOptions {
 
 /** Cria um PostgreSQL em memória com o stub do Supabase e todas as migrations. */
 export async function createTestDb(options: TestDbOptions = {}): Promise<PGlite> {
-  const db = new PGlite();
+  const db = new PGlite({ extensions: { btree_gist } });
   await db.exec(readFileSync(join(here, 'supabase-stub.sql'), 'utf8'));
   if (options.defaultGrants !== false) await db.exec(readFileSync(join(here, 'supabase-default-grants.sql'), 'utf8'));
   for (const file of migrationFiles()) {

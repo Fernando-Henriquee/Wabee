@@ -27,7 +27,8 @@
     "check": "npm run typecheck && npm run lint && npm run test && npm run build",
     "provision": "tsx scripts/provision-users.ts",
     "backup:db": "bash scripts/backup-db.sh",
-    "sql:bundle": "tsx scripts/bundle-migrations.ts"
+    "sql:bundle": "tsx scripts/bundle-migrations.ts",
+    "db:migrate": "tsx scripts/db-migrate.ts"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
@@ -61,8 +62,9 @@
     "@testing-library/jest-dom": "6.9.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.8",
-    "@types/big.js": "^6.2.2",
+    "@types/big.js": "^7.0.0",
     "@types/node": "^22.20.5",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vite-pwa/assets-generator": "^2.0.0",
@@ -73,6 +75,7 @@
     "fast-check": "^4.10.2",
     "globals": "^17.13.0",
     "jsdom": "^27.4.0",
+    "pg": "^8.23.1",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",

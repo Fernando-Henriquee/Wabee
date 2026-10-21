@@ -71,19 +71,11 @@ export class TestEnv {
     return row.id;
   }
 
-  /** Cria um negócio com membros e os produtos iniciais. */
-  async createBusiness(name: string, members: Array<{ userId: string; role: 'owner' | 'editor' | 'viewer' }>) {
-    const admin = this.admin();
-    const business = await admin.one<{ id: string }>(`insert into public.businesses (name) values ($1) returning id`, [name]);
-    for (const member of members) {
-      await admin.query(`insert into public.business_members (business_id, user_id, role) values ($1, $2, $3)`, [
-        business.id,
-        member.userId,
-        member.role,
-      ]);
-    }
-    await admin.query(`select private.seed_business_defaults($1)`, [business.id]);
-    return business.id;
+  /** Cria um usuário com acesso ao sistema no perfil indicado (dono, producao ou leitura). */
+  async createMember(email: string, role: 'dono' | 'producao' | 'leitura' = 'dono', displayName?: string): Promise<string> {
+    const id = await this.createUser(email, displayName);
+    await this.admin().query(`insert into public.app_members (user_id, role) values ($1, $2)`, [id, role]);
+    return id;
   }
 
   async as<T>(userId: string | null, fn: (session: Session) => Promise<T>): Promise<T> {
@@ -146,12 +138,4 @@ export function n(value: unknown): number {
   if (typeof value === 'bigint') return Number(value);
   if (typeof value === 'string') return Number(value);
   throw new Error(`Valor não numérico: ${String(value)}`);
-}
-
-export async function productId(session: Session, businessId: string, name: string): Promise<string> {
-  const row = await session.one<{ id: string }>(`select id from public.products where business_id = $1 and name = $2`, [
-    businessId,
-    name,
-  ]);
-  return row.id;
 }
