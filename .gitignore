@@ -1,0 +1,37 @@
+# dependências e builds
+node_modules/
+dist/
+dist-e2e/
+dev-dist/
+coverage/
+*.tsbuildinfo
+
+# testes
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
+
+# ambiente local (emulador da API Supabase)
+.local-backend/
+
+# segredos — nunca versionar
+.env
+.env.*
+!.env.example
+
+# sistema / editores
+.DS_Store
+*.log
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.vercel
+
+# área de trabalho de agentes (Claude Code)
+.claude/worktrees/
+.env.provision
+
+# backups locais de banco (dados reais) — nunca versionar
+backups/
+supabase/.bundle/
