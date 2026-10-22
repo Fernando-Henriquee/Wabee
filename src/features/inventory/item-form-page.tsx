@@ -12,6 +12,7 @@ import { ErrorState, LoadingBlock } from '@/components/ui/states';
 import {
   type ItemInput,
   type ItemKind,
+  type ItemRow,
   type ItemUnit,
   KIND_LABELS,
   type Material,
@@ -91,86 +92,87 @@ function Section({ title, description, children }: { title: string; description?
   );
 }
 
+function stateFromItem(it: ItemRow): FormState {
+  return {
+    kind: it.kind,
+    name: it.name,
+    sku: it.sku,
+    unit: it.unit,
+    is_stock_tracked: it.is_stock_tracked,
+    is_sellable: it.is_sellable,
+    min_qty: String(it.min_qty ?? ''),
+    reorder_qty: String(it.reorder_qty ?? ''),
+    location: it.location ?? '',
+    default_supplier_id: it.default_supplier_id ? String(it.default_supplier_id) : '',
+    notes: it.notes ?? '',
+    material: it.material ?? 'PLA',
+    brand: it.brand ?? '',
+    color_name: it.color_name ?? '',
+    color_hex: it.color_hex ?? '#141414',
+    diameter_mm: it.diameter_mm === null ? null : String(it.diameter_mm),
+    density_g_cm3: it.density_g_cm3 === null ? null : String(it.density_g_cm3),
+    nominal_spool_g: it.nominal_spool_g === null ? null : String(it.nominal_spool_g),
+    empty_spool_tare_g: it.empty_spool_tare_g === null ? null : String(it.empty_spool_tare_g),
+    needs_drying: Boolean(it.needs_drying),
+    tool_condition: it.tool_condition ?? 'BOA',
+    tool_acquired_at: it.tool_acquired_at ?? '',
+    tool_acquisition_value: it.tool_acquisition_value === null ? null : String(it.tool_acquisition_value),
+  };
+}
+
 export function ItemFormPage() {
   const { id } = useParams();
-  const editing = Boolean(id);
   const [params] = useSearchParams();
-  const navigate = useNavigate();
-  const item = useItem(editing ? Number(id) : undefined);
-  const suppliers = useSuppliers();
+  const item = useItem(id ? Number(id) : undefined);
+  if (id && item.isError) return <Page><ErrorState error={item.error} /></Page>;
+  if (id && !item.data) return <Page><LoadingBlock /></Page>;
   const initialKind = (params.get('tipo') as ItemKind | null) ?? 'FILAMENT';
-  const [form, setForm] = useState<FormState>(() => emptyState(KINDS.includes(initialKind) ? initialKind : 'FILAMENT'));
-  const [nameTouched, setNameTouched] = useState(false);
-  const [skuTouched, setSkuTouched] = useState(false);
+  return <ItemForm key={id ?? 'new'} id={id} initial={item.data ? stateFromItem(item.data) : emptyState(KINDS.includes(initialKind) ? initialKind : 'FILAMENT')} />;
+}
+
+function ItemForm({ id, initial }: { id?: string; initial: FormState }) {
+  const editing = Boolean(id);
+  const navigate = useNavigate();
+  const suppliers = useSuppliers();
+  const [form, setForm] = useState<FormState>(initial);
+  const [nameTouched, setNameTouched] = useState(editing);
+  const [skuTouched, setSkuTouched] = useState(editing);
+  const [suggestedSku, setSuggestedSku] = useState('');
   const [error, setError] = useState<{ message: string; existingId?: number } | null>(null);
   const save = useSaveItem((savedId) => navigate(`/estoque/itens/${savedId}`, { replace: true }));
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((f) => ({ ...f, [key]: value }));
 
-  // Carrega o item ao editar.
-  useEffect(() => {
-    const it = item.data;
-    if (!it) return;
-    setForm({
-      kind: it.kind,
-      name: it.name,
-      sku: it.sku,
-      unit: it.unit,
-      is_stock_tracked: it.is_stock_tracked,
-      is_sellable: it.is_sellable,
-      min_qty: String(it.min_qty ?? ''),
-      reorder_qty: String(it.reorder_qty ?? ''),
-      location: it.location ?? '',
-      default_supplier_id: it.default_supplier_id ? String(it.default_supplier_id) : '',
-      notes: it.notes ?? '',
-      material: it.material ?? 'PLA',
-      brand: it.brand ?? '',
-      color_name: it.color_name ?? '',
-      color_hex: it.color_hex ?? '#141414',
-      diameter_mm: it.diameter_mm === null ? null : String(it.diameter_mm),
-      density_g_cm3: it.density_g_cm3 === null ? null : String(it.density_g_cm3),
-      nominal_spool_g: it.nominal_spool_g === null ? null : String(it.nominal_spool_g),
-      empty_spool_tare_g: it.empty_spool_tare_g === null ? null : String(it.empty_spool_tare_g),
-      needs_drying: Boolean(it.needs_drying),
-      tool_condition: it.tool_condition ?? 'BOA',
-      tool_acquired_at: it.tool_acquired_at ?? '',
-      tool_acquisition_value: it.tool_acquisition_value === null ? null : String(it.tool_acquisition_value),
-    });
-    setNameTouched(true);
-    setSkuTouched(true);
-  }, [item.data]);
-
-  // Nome sugerido para filamento: "PLA preto — Marca X" (US-1.2).
-  useEffect(() => {
-    if (form.kind !== 'FILAMENT' || nameTouched) return;
-    const name = [MATERIAL_LABELS[form.material], form.color_name.trim()].filter(Boolean).join(' ') + (form.brand.trim() ? ` — ${form.brand.trim()}` : '');
-    setForm((f) => ({ ...f, name }));
-  }, [form.kind, form.material, form.color_name, form.brand, nameTouched]);
+  // Nome sugerido para filamento: "PLA preto — Marca X" (US-1.2), calculado até a pessoa editar.
+  const suggestedName =
+    form.kind === 'FILAMENT'
+      ? [MATERIAL_LABELS[form.material], form.color_name.trim()].filter(Boolean).join(' ') + (form.brand.trim() ? ` — ${form.brand.trim()}` : '')
+      : form.name;
+  const name = nameTouched ? form.name : suggestedName;
+  const sku = skuTouched ? form.sku : suggestedSku;
 
   // SKU sugerido pelo banco (<PREFIXO>-<ABREV>-<NNN>), editável antes de salvar.
   useEffect(() => {
-    if (skuTouched || !form.name.trim()) return;
+    if (skuTouched || !name.trim()) return;
     const handle = setTimeout(() => {
-      suggestSku(form.kind, form.name, form.material, form.color_name)
-        .then((sku) => setForm((f) => (skuTouched ? f : { ...f, sku })))
+      suggestSku(form.kind, name, form.material, form.color_name)
+        .then(setSuggestedSku)
         .catch(() => undefined);
     }, 350);
     return () => clearTimeout(handle);
-  }, [form.kind, form.name, form.material, form.color_name, skuTouched]);
+  }, [form.kind, name, form.material, form.color_name, skuTouched]);
 
-  if (editing && item.isError) return <Page><ErrorState error={item.error} /></Page>;
-  if (editing && !item.data) return <Page><LoadingBlock /></Page>;
   const filament = form.kind === 'FILAMENT';
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
-    if (!form.name.trim()) return setError({ message: 'Informe o nome do item.' });
+    if (!name.trim()) return setError({ message: 'Informe o nome do item.' });
     if (filament && !form.color_name.trim()) return setError({ message: 'Informe a cor do filamento.' });
     const payload: ItemInput = {
       id: editing ? Number(id) : undefined,
       kind: form.kind,
-      name: form.name.trim(),
-      sku: form.sku.trim() || undefined,
+      name: name.trim(),
+      sku: sku.trim() || undefined,
       unit: form.unit,
       is_stock_tracked: form.is_stock_tracked,
       is_sellable: form.is_sellable,
@@ -217,7 +219,7 @@ export function ItemFormPage() {
       <form onSubmit={submit} className="space-y-4" noValidate>
         <Section title="Identificação">
           <Field label="Tipo" required hint={editing ? 'O tipo não muda depois de haver movimentações.' : undefined}>
-            <Select value={form.kind} onChange={(e) => setForm((f) => ({ ...emptyState(e.target.value as ItemKind), name: f.name }))} disabled={editing}>
+            <Select value={form.kind} onChange={(e) => setForm((f) => ({ ...emptyState(e.target.value as ItemKind), name: nameTouched ? f.name : '' }))} disabled={editing}>
               {KINDS.map((k) => (
                 <option key={k} value={k}>
                   {KIND_LABELS[k]}
@@ -281,7 +283,7 @@ export function ItemFormPage() {
           ) : null}
           <Field label="Nome" required className="sm:col-span-2">
             <Input
-              value={form.name}
+              value={name}
               onChange={(e) => {
                 setNameTouched(true);
                 set('name', e.target.value);
@@ -291,7 +293,7 @@ export function ItemFormPage() {
           <Field label="SKU" hint="Gerado automaticamente; pode ser editado antes de salvar.">
             <div className="flex gap-2">
               <Input
-                value={form.sku}
+                value={sku}
                 onChange={(e) => {
                   setSkuTouched(true);
                   set('sku', e.target.value.toUpperCase());
