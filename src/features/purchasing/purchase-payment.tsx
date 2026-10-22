@@ -201,7 +201,7 @@ export function PurchasePayment({ state, onChange, accounts, purchasedAt, cashTo
             tone="warning"
             title="As linhas precisam somar o total parcelado"
             action={
-              <Button type="button" size="sm" variant="outline" onClick={onFitLines}>
+              <Button type="button" size="sm" className="h-10 sm:h-8" variant="outline" onClick={onFitLines}>
                 <Wand2 /> Ajustar linhas ao total
               </Button>
             }
@@ -230,6 +230,7 @@ export function PurchasePayment({ state, onChange, accounts, purchasedAt, cashTo
               <Button
                 type="button"
                 size="sm"
+                className="h-10 sm:h-8"
                 variant="ghost"
                 onClick={() => {
                   onChange({ edited: {} });
@@ -239,13 +240,13 @@ export function PurchasePayment({ state, onChange, accounts, purchasedAt, cashTo
                 <RotateCcw /> Cálculo automático
               </Button>
             ) : (
-              <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(true)}>
+              <Button type="button" size="sm" className="h-10 sm:h-8" variant="ghost" onClick={() => setEditing(true)}>
                 <Pencil /> Editar valores
               </Button>
             )
           ) : null}
         </div>
-        <ol className="grid grid-cols-1 gap-x-6 px-3 py-1 sm:grid-cols-2">
+        <ol className={cn('grid grid-cols-1 gap-x-6 px-3 py-1', installments.rows.length > 4 && 'sm:grid-cols-2')}>
           {installments.rows.map((row, i) => (
             <li key={i} className="flex min-h-10 items-center gap-3 border-b border-line/60 py-1 text-sm last:border-b-0 sm:[&:nth-last-child(2):nth-child(odd)]:border-b-0">
               <span className="w-12 shrink-0 text-xs text-muted">

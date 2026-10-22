@@ -213,7 +213,7 @@ function PurchaseDetail({ purchase, lines }: { purchase: PurchaseRow; lines: Pur
           className="mb-4"
           action={
             activeReceipts.length > 0 ? (
-              <Button size="sm" variant="danger-outline" onClick={() => setTab('receipts')}>
+              <Button size="sm" className="h-10 sm:h-8" variant="danger-outline" onClick={() => setTab('receipts')}>
                 Ver recebimentos
               </Button>
             ) : undefined

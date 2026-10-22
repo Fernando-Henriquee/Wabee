@@ -48,6 +48,14 @@ function round3(n: number) {
   return String(Math.round(n * 1000) / 1000);
 }
 
+/** Tipo sugerido pela descrição da linha (editável). */
+function guessEquipmentKind(description: string): EquipmentKind {
+  if (/secador|secadora|dryer|desumidificador/i.test(description)) return 'DRYER';
+  if (/impressora|printer|bambu|prusa|ender|creality|elegoo|anycubic/i.test(description)) return 'PRINTER';
+  if (/lixadeira|esta[cç][aã]o de cura|cura uv|wash|lavadora|p[oó]s[- ]?process/i.test(description)) return 'POST_PROCESS';
+  return 'OTHER';
+}
+
 function initialState(line: PurchaseLineRow, opening: boolean, pending: number): LineState {
   const nominal = toNumber(line.nominal_spool_g) || 1000;
   const count = Math.max(1, Math.round(pending / nominal));
@@ -61,7 +69,7 @@ function initialState(line: PurchaseLineRow, opening: boolean, pending: number):
     spools: Array.from({ length: count }, () => round3(each)),
     equipment: {
       name: line.description.slice(0, 70),
-      kind: 'PRINTER',
+      kind: guessEquipmentKind(line.description),
       useful_life_hours: null,
       avg_power_w: null,
       initial_hours: '0',
@@ -277,7 +285,7 @@ export function ReceiveDialog({ purchase, lines, mode, onOpenChange, paidCount, 
                                 ))}
                               </ul>
                               <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                                <Button type="button" size="sm" variant="outline" onClick={() => patch(l.id, { spools: [...st.spools, String(toNumber(l.nominal_spool_g) || 1000)] })}>
+                                <Button type="button" size="sm" className="h-10 sm:h-8" variant="outline" onClick={() => patch(l.id, { spools: [...st.spools, String(toNumber(l.nominal_spool_g) || 1000)] })}>
                                   <Plus /> Carretel
                                 </Button>
                                 <span className="text-xs text-muted">

@@ -133,8 +133,8 @@ export function lineFromRow(row: PurchaseLineRow, nominal: number | null): LineD
   }
   const factor = priceFactor(line, filament);
   const unit = new Big(row.unit_price).times(factor);
-  // Preço por kg/carretel com centavos; preço unitário comum aceita até 4 casas.
-  if (unit.round(factor > 1 ? 2 : 4, Big.roundHalfUp).eq(unit)) {
+  // Preço por kg/carretel, equipamento e despesa em centavos; preço unitário de item aceita até 4 casas.
+  if (unit.round(factor > 1 || row.line_kind !== 'ITEM' ? 2 : 4, Big.roundHalfUp).eq(unit)) {
     line.priceMode = 'unit';
     line.price = unit.toFixed();
   } else {

@@ -41,6 +41,11 @@ function priceLabel(line: LineDraft, filament: boolean) {
   return 'Preço unitário';
 }
 
+/** Centavos no preço por kg/carretel, total e equipamento/despesa; até 4 casas no preço unitário de itens (ex.: R$ 0,0125). */
+function priceDecimals(line: LineDraft, filament: boolean) {
+  return line.priceMode === 'total' || filament || line.kind !== 'ITEM' ? 2 : 4;
+}
+
 /** Para onde vai o valor da linha (estoque, equipamento ou despesa na data da compra). */
 function destination(line: LineDraft, item: ItemRow | undefined) {
   if (line.kind === 'EQUIPMENT') return 'Vira equipamento (depreciação por hora), sem juros.';
@@ -90,7 +95,7 @@ export function PurchaseLineEditor({ line, index, item, preview, categoryGroups,
     if (mode === 'total') onChange({ priceMode: 'total', price: preview && toNumber(qty) > 0 && line.price !== null ? preview.lineTotal : line.price });
     else {
       const unitPrice = lineUnitPrice(line, filament);
-      onChange({ priceMode: 'unit', price: unitPrice ? round(new Big(unitPrice).times(factor), factor > 1 ? 2 : 4) : null });
+      onChange({ priceMode: 'unit', price: unitPrice ? round(new Big(unitPrice).times(factor), priceDecimals({ ...line, priceMode: 'unit' }, filament)) : null });
     }
   };
 
@@ -99,7 +104,7 @@ export function PurchaseLineEditor({ line, index, item, preview, categoryGroups,
   const allowedSizes = item?.nominal_spool_g && !SPOOL_SIZES.includes(Number(item.nominal_spool_g)) ? [...SPOOL_SIZES, Number(item.nominal_spool_g)].sort((a, b) => a - b) : SPOOL_SIZES;
 
   return (
-    <li className="rounded-[var(--radius-card)] border border-line bg-panel p-3 shadow-[var(--shadow-card)] sm:p-4">
+    <li className="@container rounded-[var(--radius-card)] border border-line bg-panel p-3 shadow-[var(--shadow-card)] sm:p-4">
       <div className="flex items-center gap-2">
         <span className="grid size-7 shrink-0 place-items-center rounded-full bg-subtle text-xs font-semibold text-ink-soft" aria-hidden>
           {index + 1}
@@ -116,9 +121,9 @@ export function PurchaseLineEditor({ line, index, item, preview, categoryGroups,
         </Button>
       </div>
 
-      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-12">
+      <div className="mt-3 grid grid-cols-1 gap-3 @lg:grid-cols-2">
         {line.kind === 'ITEM' ? (
-          <div className="flex flex-col gap-1.5 sm:col-span-12 lg:col-span-5">
+          <div className="flex flex-col gap-1.5 @lg:col-span-2">
             <span className="text-sm font-medium text-ink-soft" id={`${id}-item`}>
               Item<span className="ml-0.5 text-danger" aria-hidden>*</span>
             </span>
@@ -137,7 +142,7 @@ export function PurchaseLineEditor({ line, index, item, preview, categoryGroups,
                 <span id={`${id}-item-value`} className="min-w-0 flex-1 truncate">
                   {item ? item.name : 'Escolher item…'}
                 </span>
-                {item ? <span className="hidden shrink-0 text-xs text-muted sm:inline">{KIND_LABELS[item.kind]}</span> : null}
+                {item ? <span className="hidden shrink-0 text-xs text-muted @md:inline">{KIND_LABELS[item.kind]} · {item.sku}</span> : null}
                 <ChevronsUpDown className="size-4 shrink-0 text-muted" aria-hidden />
               </button>
               <Button type="button" variant="outline" size="icon" onClick={onNewItem} aria-label="Cadastrar novo item" title="Cadastrar novo item">
@@ -147,7 +152,7 @@ export function PurchaseLineEditor({ line, index, item, preview, categoryGroups,
           </div>
         ) : line.kind === 'EXPENSE' ? (
           <>
-            <Field label="Categoria da despesa" required className="sm:col-span-6 lg:col-span-3">
+            <Field label="Categoria da despesa" required>
               <Select value={line.categoryId ? String(line.categoryId) : ''} onChange={(e) => onChange({ categoryId: e.target.value ? Number(e.target.value) : null })}>
                 <option value="">Escolha…</option>
                 {categoryGroups.map((group) => (
@@ -161,21 +166,19 @@ export function PurchaseLineEditor({ line, index, item, preview, categoryGroups,
                 ))}
               </Select>
             </Field>
-            <Field label="Descrição" required className="sm:col-span-6 lg:col-span-2">
+            <Field label="Descrição" required>
               <Input value={line.description} onChange={(e) => onChange({ description: e.target.value })} maxLength={200} placeholder="Ex.: assinatura, frete avulso" />
             </Field>
           </>
         ) : (
-          <Field label="Descrição do equipamento" required className="sm:col-span-12 lg:col-span-5">
+          <Field label="Descrição do equipamento" required className="@lg:col-span-2">
             <Input value={line.description} onChange={(e) => onChange({ description: e.target.value })} maxLength={200} placeholder="Ex.: Impressora Bambu Lab A1" />
           </Field>
         )}
 
         {filament ? (
-          <div className="flex flex-col gap-1.5 sm:col-span-6 lg:col-span-4">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-sm font-medium text-ink-soft">Quantidade</span>
-            </div>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-ink-soft">Quantidade</span>
             <Segmented
               label="Como informar a quantidade"
               value={line.qtyMode}
@@ -209,19 +212,19 @@ export function PurchaseLineEditor({ line, index, item, preview, categoryGroups,
             </p>
           </div>
         ) : (
-          <Field label="Quantidade" required className="sm:col-span-6 lg:col-span-4">
+          <Field label="Quantidade" required>
             <DecimalInput decimals={line.kind === 'EQUIPMENT' ? 0 : 3} suffix={unitLabel(unit)} value={line.qty} onValueChange={(v) => onChange({ qty: v })} />
           </Field>
         )}
 
-        <div className="flex flex-col gap-1.5 sm:col-span-6 lg:col-span-3">
+        <div className="flex flex-col gap-1.5">
           <label htmlFor={`${id}-price`} className="text-sm font-medium text-ink-soft">
             {priceLabel(line, filament)}
             <span className="ml-0.5 text-danger" aria-hidden>
               *
             </span>
           </label>
-          <DecimalInput id={`${id}-price`} decimals={line.priceMode === 'total' ? 2 : 4} prefix="R$" value={line.price} onValueChange={(v) => onChange({ price: v })} />
+          <DecimalInput id={`${id}-price`} decimals={priceDecimals(line, filament)} prefix="R$" value={line.price} onValueChange={(v) => onChange({ price: v })} />
           <Segmented
             label="Como informar o preço"
             value={line.priceMode}

@@ -198,6 +198,8 @@ export function InstallmentsPanel({ purchase, installments, error, preview, refu
   if (error) return <ErrorState error={error} />;
   if (!installments) return <LoadingBlock rows={3} />;
   const active = installments.filter((i) => i.status !== 'CANCELADA');
+  // Compra cancelada: o que foi pago já virou reembolso a receber; as parcelas ficam só para consulta.
+  const writable = can('write') && purchase.status !== 'CANCELADA';
   return (
     <div className="space-y-3">
       {installments.length === 0 ? (
@@ -205,35 +207,39 @@ export function InstallmentsPanel({ purchase, installments, error, preview, refu
       ) : (
         <ul className="divide-y divide-line overflow-hidden rounded-[var(--radius-card)] border border-line bg-panel">
           {installments.map((i) => (
-            <li key={i.id} className={cn('flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 text-sm', i.status === 'CANCELADA' && 'opacity-60')}>
-              <span className="w-12 shrink-0 text-xs text-muted">
+            <li key={i.id} className={cn('flex items-start gap-3 px-3 py-2.5 text-sm', i.status === 'CANCELADA' && 'opacity-60')}>
+              <span className="w-9 shrink-0 pt-0.5 text-xs text-muted">
                 {i.number}/{i.of_total}
               </span>
-              <span className="min-w-0 flex-1">
-                <span className="num font-medium">vence {formatDateBR(i.due_date)}</span> {installmentStatus(i)}
-                <span className="block text-xs text-muted">
-                  {i.status === 'PAGA'
-                    ? `por ${PAYER_LABELS[i.payer].toLowerCase()}${i.account_name ? ` · ${i.account_name}` : ''}`
-                    : `pagador previsto: ${PAYER_LABELS[i.payer].toLowerCase()}`}
-                  {toNumber(i.interest) > 0 ? (
-                    <>
-                      {' '}· juros <Money value={i.interest} />
-                    </>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="num whitespace-nowrap font-medium">vence {formatDateBR(i.due_date)}</span> {installmentStatus(i)}
+                  </span>
+                  <Money value={i.status === 'PAGA' ? (i.paid_amount ?? i.amount) : i.amount} className="shrink-0 font-semibold" />
+                </div>
+                <div className="mt-0.5 flex flex-wrap items-center justify-between gap-x-2">
+                  <span className="text-xs text-muted">
+                    {i.status === 'PAGA'
+                      ? `por ${PAYER_LABELS[i.payer].toLowerCase()}${i.account_name ? ` · ${i.account_name}` : ''}`
+                      : `pagador previsto: ${PAYER_LABELS[i.payer].toLowerCase()}`}
+                    {toNumber(i.interest) > 0 ? (
+                      <>
+                        {' '}· juros <Money value={i.interest} />
+                      </>
+                    ) : null}
+                  </span>
+                  {writable && i.status === 'ABERTA' ? (
+                    <Button size="sm" variant="outline" className="-mr-1 mt-1 h-10 sm:h-8" onClick={() => setPaying(i)}>
+                      <HandCoins /> Pagar
+                    </Button>
+                  ) : writable && i.status === 'PAGA' ? (
+                    <Button size="sm" variant="ghost" className="-mr-2 h-10 text-xs sm:h-8" onClick={() => setReversing(i)}>
+                      <Undo2 /> Estornar baixa
+                    </Button>
                   ) : null}
-                </span>
-              </span>
-              <span className="text-right">
-                <Money value={i.status === 'PAGA' ? (i.paid_amount ?? i.amount) : i.amount} className="font-semibold" />
-              </span>
-              {can('write') && i.status === 'ABERTA' ? (
-                <Button size="sm" variant="outline" onClick={() => setPaying(i)}>
-                  <HandCoins /> Pagar
-                </Button>
-              ) : can('write') && i.status === 'PAGA' ? (
-                <Button size="sm" variant="ghost" onClick={() => setReversing(i)}>
-                  <Undo2 /> Estornar baixa
-                </Button>
-              ) : null}
+                </div>
+              </div>
             </li>
           ))}
         </ul>
@@ -296,7 +302,7 @@ export function ReceiptsPanel({ receipts, lines, error }: { receipts: ReceiptWit
               <span className="text-xs text-muted">{formatDateTimeBR(r.received_at, settings.timezone)}</span>
               {r.reversed_at ? <Badge tone="danger">estornado {formatDateBR(r.reversed_at.slice(0, 10))}</Badge> : <Badge tone="success">ativo</Badge>}
               {can('write') && !r.reversed_at ? (
-                <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setReversing(r)}>
+                <Button size="sm" variant="ghost" className="h-10 sm:h-8 ml-auto" onClick={() => setReversing(r)}>
                   <RotateCcw /> Estornar recebimento
                 </Button>
               ) : null}

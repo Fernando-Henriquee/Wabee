@@ -173,6 +173,7 @@ export function QuickItemDialog({ open, onOpenChange, initialName = '', initialK
                 <Button
                   type="button"
                   size="sm"
+                  className="h-10 sm:h-8"
                   variant="danger-outline"
                   onClick={() => {
                     onSaved(error.existingId!, { kind: 'FILAMENT', nominal: null });
