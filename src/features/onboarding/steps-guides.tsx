@@ -1,13 +1,16 @@
-import { ArrowRight, Boxes, CircleCheck, CircleDashed, ExternalLink, Package, PartyPopper, Plus, ShoppingCart, SkipForward, TriangleAlert } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { ArrowRight, Boxes, CircleCheck, CircleDashed, ExternalLink, Package, PartyPopper, Pencil, Plus, ShoppingCart, Store, TriangleAlert } from 'lucide-react';
+import { type ReactNode, useState } from 'react';
 import { Link } from 'react-router';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import type { OnboardingSnapshot } from '@/data/settings';
+import { ErrorState, LoadingBlock } from '@/components/ui/states';
+import { type ChannelWithFees, CHANNEL_KIND_LABELS, type OnboardingSnapshot, useSalesChannelsWithFees } from '@/data/settings';
 import { useMember } from '@/features/member/member-context';
+import { ChannelDialog } from '@/features/settings/channel-dialog';
+import { describeFee, payoutLabel } from '@/features/settings/channel-format';
 import { formatDateBR } from '@/lib/dates';
 import { formatBRL, formatCost, toNumber } from '@/lib/money';
-import { STEPS, type StepKey, type StepStatus } from './onboarding-logic';
+import { ONBOARDING_STEPS, type StepKey, type StepStatus } from './onboarding-logic';
 import { ContinueButton, CountTile, DoneNote, Explain, StepFooter, type StepNav } from './step-ui';
 
 interface GuideProps {
@@ -23,91 +26,90 @@ function LinkButton({ to, children, variant = 'accent' }: { to: string; children
   );
 }
 
+function BackHint() {
+  return <p className="text-xs text-muted">Ao terminar cada cadastro, volte por Configurações → Assistente inicial: o progresso fica salvo.</p>;
+}
+
 // -----------------------------------------------------------------------------
-// 4. Filamentos e itens
+// 5. Filamentos em estoque
 // -----------------------------------------------------------------------------
 
-export function StepItems({ nav, snapshot }: GuideProps) {
-  const c = snapshot.itemCounts;
+export function StepFilaments({ nav, snapshot }: GuideProps) {
+  const { settings } = useMember();
+  const total = snapshot.itemCounts.FILAMENT ?? 0;
+  const withStock = snapshot.itemsWithStock.FILAMENT ?? 0;
   return (
     <div>
       <div className="space-y-4 p-4">
         <Explain>
-          Cadastre o que você usa para produzir: cada <strong>filamento</strong> (material, cor e marca), os <strong>componentes</strong> (argolas, ímãs, chaveiros) e as{' '}
-          <strong>embalagens</strong>. Por enquanto só o cadastro, sem quantidades: o saldo entra pelas compras anteriores (passo 6) ou pelo saldo inicial (passo 7).
+          Cadastre cada <strong>filamento</strong> (material, cor e marca) e informe o que você <strong>já tem</strong>: pese os carretéis abertos e conte os fechados no{' '}
+          <strong>saldo inicial</strong>. Filamento que veio numa compra que você vai lançar em “Compras já feitas” entra no estoque quando a compra for recebida: não lance de novo.
+          Sem custo conhecido, vale a referência de <strong className="num">{formatCost(toNumber(settings.filament_reference_cost_g), 4)}/g</strong>.
         </Explain>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-          <CountTile label="Filamentos" value={c.FILAMENT ?? 0} to="/estoque?tipo=FILAMENT" />
-          <CountTile label="Componentes" value={c.COMPONENT ?? 0} to="/estoque?tipo=COMPONENT" />
-          <CountTile label="Embalagens" value={c.PACKAGING ?? 0} to="/estoque?tipo=PACKAGING" />
-          <CountTile label="Consumíveis" value={c.CONSUMABLE ?? 0} to="/estoque?tipo=CONSUMABLE" />
-          <CountTile label="Ferramentas" value={c.TOOL ?? 0} to="/estoque?tipo=TOOL" />
+        <div className="grid grid-cols-2 gap-2 sm:max-w-md">
+          <CountTile label="Filamentos cadastrados" value={total} to="/estoque?tipo=FILAMENT" />
+          <CountTile label="Com saldo em estoque" value={withStock} to="/estoque/carreteis" />
         </div>
+        {total > 0 && withStock < total ? (
+          <p className="text-sm text-ink-soft">
+            {total - withStock === 1 ? '1 filamento ainda está' : `${total - withStock} filamentos ainda estão`} sem saldo. Lance o saldo inicial ou receba a compra deles.
+          </p>
+        ) : null}
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           <LinkButton to="/estoque/itens/novo?tipo=FILAMENT">
             <Plus /> Cadastrar filamento
           </LinkButton>
-          <LinkButton to="/estoque/itens/novo?tipo=COMPONENT" variant="outline">
-            <Plus /> Componente
-          </LinkButton>
-          <LinkButton to="/estoque/itens/novo?tipo=PACKAGING" variant="outline">
-            <Plus /> Embalagem
-          </LinkButton>
-          <LinkButton to="/estoque" variant="outline">
-            <Boxes /> Ver estoque
+          <LinkButton to="/estoque/saldo-inicial" variant="outline">
+            <Boxes /> Lançar saldo inicial
           </LinkButton>
         </div>
-        <p className="text-xs text-muted">Ao terminar cada cadastro, volte aqui pelo menu Configurações → Assistente inicial (o progresso fica salvo).</p>
+        <BackHint />
       </div>
-      <StepFooter nav={nav} skipLabel="Pular por agora">
-        {nav.status === 'done' ? <ContinueButton nav={nav} /> : null}
-      </StepFooter>
+      <StepFooter nav={nav}>{nav.status === 'done' ? <ContinueButton nav={nav} /> : null}</StepFooter>
     </div>
   );
 }
 
 // -----------------------------------------------------------------------------
-// 5. Produtos e fichas
+// 6. Componentes em estoque
 // -----------------------------------------------------------------------------
 
-export function StepProducts({ nav, snapshot }: GuideProps) {
-  const withoutBom = snapshot.variants - snapshot.variantsWithBom;
+export function StepComponents({ nav, snapshot }: GuideProps) {
+  const count = (kind: string) => snapshot.itemCounts[kind] ?? 0;
+  const stock = (kind: string) => snapshot.itemsWithStock[kind] ?? 0;
   return (
     <div>
       <div className="space-y-4 p-4">
         <Explain>
-          Cadastre o que a Wabee vende (ex.: Chaveiro Abelha) com as <strong>variações</strong> de cor. Depois monte a <strong>ficha técnica</strong> de cada variação: gramas por
-          peça, peças por mesa e tempo de impressão, componentes e embalagem. É com ela que o sistema calcula o custo e sugere o preço.
+          Cadastre os <strong>componentes</strong> (argolas, ímãs, correntes) e as <strong>embalagens</strong> (saquinhos, caixas, etiquetas) e informe as quantidades que você já
+          tem no <strong>saldo inicial</strong>. Eles entram na ficha técnica dos produtos e saem do estoque a cada montagem ou entrega.
         </Explain>
-        <div className="grid grid-cols-3 gap-2">
-          <CountTile label="Produtos" value={snapshot.products} to="/produtos" />
-          <CountTile label="Variações" value={snapshot.variants} />
-          <CountTile label="Com ficha ativa" value={snapshot.variantsWithBom} />
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <CountTile label="Componentes" value={count('COMPONENT')} to="/estoque?tipo=COMPONENT" />
+          <CountTile label="Componentes com saldo" value={stock('COMPONENT')} />
+          <CountTile label="Embalagens" value={count('PACKAGING')} to="/estoque?tipo=PACKAGING" />
+          <CountTile label="Embalagens com saldo" value={stock('PACKAGING')} />
         </div>
-        {withoutBom > 0 ? (
-          <p className="flex items-start gap-2 rounded-lg bg-warning-soft px-3 py-2 text-sm text-warning">
-            <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
-            {withoutBom === 1 ? '1 variação ainda está' : `${withoutBom} variações ainda estão`} sem ficha técnica ativa.
-          </p>
-        ) : null}
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <LinkButton to="/produtos/novo">
-            <Plus /> Novo produto
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+          <LinkButton to="/estoque/itens/novo?tipo=COMPONENT">
+            <Plus /> Cadastrar componente
           </LinkButton>
-          <LinkButton to="/produtos" variant="outline">
-            <Package /> Ver produtos
+          <LinkButton to="/estoque/itens/novo?tipo=PACKAGING" variant="outline">
+            <Package /> Cadastrar embalagem
+          </LinkButton>
+          <LinkButton to="/estoque/saldo-inicial" variant="outline">
+            <Boxes /> Lançar saldo inicial
           </LinkButton>
         </div>
+        <BackHint />
       </div>
-      <StepFooter nav={nav} skipLabel="Pular por agora">
-        {nav.status === 'done' ? <ContinueButton nav={nav} /> : null}
-      </StepFooter>
+      <StepFooter nav={nav}>{nav.status === 'done' ? <ContinueButton nav={nav} /> : null}</StepFooter>
     </div>
   );
 }
 
 // -----------------------------------------------------------------------------
-// 6. Compras anteriores ao sistema
+// 7. Compras já feitas (anteriores ao sistema)
 // -----------------------------------------------------------------------------
 
 export function StepPurchases({ nav, snapshot }: GuideProps) {
@@ -159,7 +161,7 @@ export function StepPurchases({ nav, snapshot }: GuideProps) {
           <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line" aria-label="Compras anteriores lançadas">
             {snapshot.openingPurchases.map((p) => (
               <li key={p.id}>
-                <Link to={`/compras/${p.id}`} className="flex items-center gap-3 px-3 py-2.5 text-sm hover:bg-subtle">
+                <Link to={`/compras/${p.id}`} className="flex min-h-12 items-center gap-3 px-3 py-2.5 text-sm hover:bg-subtle">
                   <ShoppingCart className="size-4 shrink-0 text-muted" aria-hidden />
                   <span className="min-w-0 flex-1">
                     <span className="block font-medium text-ink">
@@ -179,118 +181,139 @@ export function StepPurchases({ nav, snapshot }: GuideProps) {
         ) : null}
         <div className="flex flex-col gap-2 sm:flex-row">
           <LinkButton to="/compras/nova">
-            <Plus /> Lançar compra anterior
+            <Plus /> Lançar compra já feita
           </LinkButton>
           <LinkButton to="/compras" variant="outline">
             <ShoppingCart /> Ver compras
           </LinkButton>
         </div>
       </div>
-      <StepFooter nav={nav} skipLabel="Pular por agora">
-        {nav.status === 'done' ? <ContinueButton nav={nav} /> : null}
-      </StepFooter>
+      <StepFooter nav={nav}>{nav.status === 'done' ? <ContinueButton nav={nav} /> : null}</StepFooter>
     </div>
   );
 }
 
 // -----------------------------------------------------------------------------
-// 7. Saldo inicial do estoque
+// 8. Canais de venda
 // -----------------------------------------------------------------------------
 
-export function StepOpening({ nav, snapshot }: GuideProps) {
-  const { settings } = useMember();
+export function StepChannels({ nav }: { nav: StepNav }) {
+  const { today, settings } = useMember();
+  const channels = useSalesChannelsWithFees(today());
+  const [editing, setEditing] = useState<ChannelWithFees | null>(null);
+  const rows = [...(channels.data ?? [])].sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name, 'pt-BR'));
   return (
     <div>
       <div className="space-y-4 p-4">
         <Explain>
-          Registre o que <strong>já existia</strong> no início do uso e <strong>não</strong> entrou por uma compra do passo 6: sobras de filamento (pese o carretel), componentes,
-          embalagens e produtos prontos. Filamento sem custo conhecido usa a referência de{' '}
-          <strong className="num">{formatCost(toNumber(settings.filament_reference_cost_g), 4)}/g</strong> (Empresa e regras), marcada como estimada.
+          Confira onde a Wabee vende e as <strong>taxas de cada canal</strong> (comissão, taxa fixa, taxa de pagamento) e o <strong>prazo para receber</strong>. Elas entram no preço
+          sugerido e na margem de cada venda. Ative os marketplaces que você usa (Shopee, Mercado Livre) e desative os que não usa.
         </Explain>
-        <div className="grid grid-cols-2 gap-2 sm:max-w-sm">
-          <CountTile label="Lançamentos de saldo inicial" value={snapshot.openingMovements} />
-          <CountTile label="Compras anteriores" value={snapshot.openingPurchases.length} />
-        </div>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <LinkButton to="/estoque/saldo-inicial">
-            <Plus /> Lançar saldo inicial
-          </LinkButton>
-          <LinkButton to="/estoque" variant="outline">
-            <Boxes /> Ver estoque
-          </LinkButton>
-        </div>
+        {channels.isError ? (
+          <ErrorState error={channels.error} onRetry={() => void channels.refetch()} />
+        ) : !channels.data ? (
+          <LoadingBlock rows={3} />
+        ) : (
+          <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line" aria-label="Canais de venda">
+            {rows.map((c) => (
+              <li key={c.id}>
+                <button type="button" onClick={() => setEditing(c)} className="flex min-h-14 w-full items-center gap-3 px-3 py-2.5 text-left text-sm hover:bg-subtle">
+                  <Store className="size-4 shrink-0 text-muted" aria-hidden />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-1.5 font-medium text-ink">
+                      {c.name}
+                      {c.id === settings.default_channel_id ? <Badge tone="accent">padrão</Badge> : null}
+                      {c.active ? null : <Badge>inativo</Badge>}
+                    </span>
+                    <span className="num block text-xs text-muted">
+                      {CHANNEL_KIND_LABELS[c.kind] !== c.name ? `${CHANNEL_KIND_LABELS[c.kind]} · ` : ''}
+                      {describeFee(c.current)} · recebe {payoutLabel(c.payout_days)}
+                    </span>
+                  </span>
+                  <Pencil className="size-4 shrink-0 text-muted" aria-label="Editar" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="text-xs text-muted">
+          Toque num canal para editar. Também em <Link to="/configuracoes/canais" className="underline">Configurações → Canais e taxas</Link>.
+        </p>
       </div>
-      <StepFooter nav={nav} skipLabel="Pular por agora">
-        {nav.status === 'done' ? <ContinueButton nav={nav} /> : null}
+      <StepFooter nav={nav}>
+        <Button onClick={nav.complete} loading={nav.busy}>
+          {nav.status === 'done' ? 'Continuar' : 'Revisei os canais'} <ArrowRight />
+        </Button>
       </StepFooter>
+      <ChannelDialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)} channel={editing} isDefault={editing?.id === settings.default_channel_id} />
     </div>
   );
 }
 
 // -----------------------------------------------------------------------------
-// 8. Concluir
+// Resumo e conclusão
 // -----------------------------------------------------------------------------
 
-const STATUS_TEXT: Record<StepStatus, string> = { done: 'feito', skipped: 'pulado', pending: 'pendente' };
-
-export function StepFinish({ nav, statuses, onOpen, alreadyDone }: { nav: StepNav; statuses: Record<StepKey, StepStatus>; onOpen: (key: StepKey) => void; alreadyDone: boolean }) {
-  const steps = STEPS.filter((s) => s.key !== 'concluir');
-  const pending = steps.filter((s) => statuses[s.key] !== 'done').length;
+export function StepSummary({
+  nav,
+  statuses,
+  onOpen,
+  alreadyDone,
+}: {
+  nav: StepNav;
+  statuses: Record<StepKey, StepStatus>;
+  onOpen: (key: StepKey) => void;
+  alreadyDone: boolean;
+}) {
+  const pending = ONBOARDING_STEPS.filter((s) => statuses[s.key] !== 'done').length;
   return (
     <div>
       <div className="space-y-4 p-4">
         {alreadyDone ? (
-          <DoneNote>Configuração concluída. Você pode voltar a qualquer passo quando quiser.</DoneNote>
+          <DoneNote>
+            Configuração concluída.
+            {pending > 0 ? ` ${pending === 1 ? 'O passo pendente aparece' : `Os ${pending} passos pendentes aparecem`} na Visão geral até serem feitos.` : ''}
+          </DoneNote>
         ) : (
           <Explain>
             {pending === 0
               ? 'Tudo pronto! Confira o resumo e conclua para começar a usar a Wabee no dia a dia.'
-              : `${pending === 1 ? 'Falta 1 passo' : `Faltam ${pending} passos`}. Dá para concluir assim mesmo e voltar depois em Configurações → Assistente inicial.`}
+              : `${pending === 1 ? 'Falta 1 passo' : `Faltam ${pending} passos`}. Dá para concluir assim mesmo: os pendentes ficam listados na Visão geral.`}
           </Explain>
         )}
         <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line">
-          {steps.map((step, index) => {
-            const status = statuses[step.key];
+          {ONBOARDING_STEPS.map((step, index) => {
+            const done = statuses[step.key] === 'done';
             return (
               <li key={step.key}>
                 <button type="button" onClick={() => onOpen(step.key)} className="flex min-h-12 w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-subtle">
-                  {status === 'done' ? (
-                    <CircleCheck className="size-5 shrink-0 text-success" aria-hidden />
-                  ) : status === 'skipped' ? (
-                    <SkipForward className="size-5 shrink-0 text-warning" aria-hidden />
-                  ) : (
-                    <CircleDashed className="size-5 shrink-0 text-muted" aria-hidden />
-                  )}
+                  {done ? <CircleCheck className="size-5 shrink-0 text-success" aria-hidden /> : <CircleDashed className="size-5 shrink-0 text-warning" aria-hidden />}
                   <span className="min-w-0 flex-1">
                     <span className="block font-medium text-ink">
                       {index + 1}. {step.title}
                     </span>
                     <span className="block text-xs text-muted">{step.short}</span>
                   </span>
-                  <Badge tone={status === 'done' ? 'success' : status === 'skipped' ? 'warning' : 'neutral'}>{STATUS_TEXT[status]}</Badge>
+                  <Badge tone={done ? 'success' : 'warning'}>{done ? 'feito' : 'pendente'}</Badge>
                 </button>
               </li>
             );
           })}
         </ul>
         <div className="rounded-xl border border-line p-3 text-sm">
-          <p className="mb-2 font-semibold">Próximos passos</p>
-          <ul className="space-y-1.5 text-ink-soft">
-            <li>
-              <Link to="/configuracoes/canais" className="inline-flex min-h-8 items-center gap-1.5 underline-offset-4 hover:underline">
-                <ExternalLink className="size-3.5" aria-hidden /> Revisar canais e taxas (Shopee, Mercado Livre, feiras)
-              </Link>
-            </li>
-            <li>
-              <Link to="/producao/impressoes/nova" className="inline-flex min-h-8 items-center gap-1.5 underline-offset-4 hover:underline">
-                <ExternalLink className="size-3.5" aria-hidden /> Planejar a primeira impressão
-              </Link>
-            </li>
-            <li>
-              <Link to="/vendas/rapida" className="inline-flex min-h-8 items-center gap-1.5 underline-offset-4 hover:underline">
-                <ExternalLink className="size-3.5" aria-hidden /> Registrar uma venda
-              </Link>
-            </li>
+          <p className="mb-1 font-semibold">Próximos passos</p>
+          <ul className="text-ink-soft">
+            {[
+              { to: '/produtos/novo', label: 'Cadastrar os produtos e montar as fichas técnicas' },
+              { to: '/producao/impressoes/nova', label: 'Planejar a primeira impressão' },
+              { to: '/vendas/rapida', label: 'Registrar uma venda' },
+            ].map((link) => (
+              <li key={link.to}>
+                <Link to={link.to} className="inline-flex min-h-10 items-center gap-1.5 underline-offset-4 hover:underline">
+                  <ExternalLink className="size-3.5 shrink-0" aria-hidden /> {link.label}
+                </Link>
+              </li>
+            ))}
           </ul>
         </div>
       </div>

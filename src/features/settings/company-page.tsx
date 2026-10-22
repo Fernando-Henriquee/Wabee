@@ -230,13 +230,15 @@ function CompanyFormView({ initial }: { initial: CompanyForm }) {
         </Section>
 
         <Section title="Estoque e produção">
-          <Field label="Custo de referência do filamento" hint="Por grama. Usado quando um filamento não tem custo de compra (saldo inicial sem custo, ficha sem compra). Valor estimado nos relatórios.">
+          <Field
+            label="Custo de referência do filamento"
+            hint={`Por grama (${formatBRL(toNumber(form.filament_reference_cost_g) * 1000)} por kg). Usado quando um filamento não tem custo de compra (saldo inicial sem custo, ficha sem compra); aparece como estimado.`}
+          >
             <DecimalInput decimals={4} prefix="R$" suffix="/g" value={form.filament_reference_cost_g} onValueChange={(v) => set('filament_reference_cost_g', v)} />
           </Field>
           <Field label="Alerta de cobertura (dias)" hint="Avisa quando o estoque de um item dura menos que estes dias, pelo consumo recente.">
             <DecimalInput decimals={0} value={form.coverage_alert_days} onValueChange={(v) => set('coverage_alert_days', v)} />
           </Field>
-          <p className="-mt-2 text-xs text-muted sm:col-span-2">Referência atual: {formatBRL(toNumber(form.filament_reference_cost_g) * 1000)} por kg de filamento.</p>
           <ToggleRow
             className="sm:col-span-2"
             checked={form.allow_negative_stock}

@@ -293,7 +293,10 @@ export interface OnboardingSnapshot {
   accounts: OnboardingAccount[];
   printers: OnboardingEquipment[];
   rates: OnboardingRate[];
+  /** Itens ativos por tipo (FILAMENT, COMPONENT…). */
   itemCounts: Record<string, number>;
+  /** Itens ativos com saldo maior que zero, por tipo. */
+  itemsWithStock: Record<string, number>;
   products: number;
   variants: number;
   variantsWithBom: number;
@@ -316,7 +319,7 @@ export function useOnboardingSnapshot(enabled = true) {
         unwrap<OnboardingAccount[]>(from('payment_accounts').select('id,name,kind,owner,card_closing_day,card_due_day,active').order('name')),
         unwrap<OnboardingEquipment[]>(from('equipment').select('id,name,kind,status,purchase_line_id').order('name')),
         unwrap<OnboardingRate[]>(from('cost_rates').select('id,rate_type,equipment_id,value,valid_from,valid_to').order('valid_from', { ascending: false })),
-        unwrap<Array<{ kind: string }>>(from('items').select('kind').eq('active', true)),
+        unwrap<Array<{ kind: string; qty_on_hand: number | null }>>(from('v_items').select('kind,qty_on_hand').eq('active', true)),
         countRows(from('products').select('id', { count: 'exact', head: true })),
         unwrap<Array<{ id: number; active_bom_id: number | null }>>(from('v_product_variants').select('id,active_bom_id').eq('is_hidden', false)),
         unwrap<OnboardingPurchase[]>(
@@ -329,12 +332,17 @@ export function useOnboardingSnapshot(enabled = true) {
         countRows(from('stock_movements').select('id', { count: 'exact', head: true }).eq('type', 'OPENING')),
       ]);
       const itemCounts: Record<string, number> = {};
-      for (const item of items) itemCounts[item.kind] = (itemCounts[item.kind] ?? 0) + 1;
+      const itemsWithStock: Record<string, number> = {};
+      for (const item of items) {
+        itemCounts[item.kind] = (itemCounts[item.kind] ?? 0) + 1;
+        if (Number(item.qty_on_hand ?? 0) > 0) itemsWithStock[item.kind] = (itemsWithStock[item.kind] ?? 0) + 1;
+      }
       return {
         accounts: accounts.filter((a) => a.active),
         printers: equipment.filter((e) => e.kind === 'PRINTER' && e.status !== 'BAIXADO'),
         rates,
         itemCounts,
+        itemsWithStock,
         products,
         variants: variants.length,
         variantsWithBom: variants.filter((v) => v.active_bom_id !== null).length,
@@ -365,44 +373,38 @@ export function useCreatePaymentAccount(onSaved?: (id: number) => void) {
   });
 }
 
-export interface PrinterAndRateInput {
-  /** Cadastra a impressora (null = ela entra pela compra anterior ao sistema). */
-  printer: { name: string; brand: string | null; model: string | null; acquired_at: string | null; avg_power_w: string | null } | null;
-  /** Cria a taxa combinada por hora (null = já existe). */
-  rate: { value: string; validFrom: string } | null;
+export interface PrinterInput {
+  name: string;
+  brand: string | null;
+  model: string | null;
+  avg_power_w: string | null;
 }
 
-/** Passo "Impressora e taxa": impressora (save_equipment) + taxa operacional combinada (create_cost_rate). */
-export function useSavePrinterAndRate(onDone?: () => void) {
-  return useWrite<PrinterAndRateInput, { equipmentId: number | null; rateId: number | null }>({
-    mutationFn: async ({ printer, rate }) => {
-      const equipmentId = printer
-        ? await rpc<number>('save_equipment', {
-            p_equipment: {
-              name: printer.name,
-              kind: 'PRINTER',
-              brand: printer.brand,
-              model: printer.model,
-              acquired_at: printer.acquired_at,
-              avg_power_w: printer.avg_power_w,
-            },
-          })
-        : null;
-      const rateId = rate
-        ? await rpc<number>('create_cost_rate', {
-            p_rate_type: 'OPERATIONAL_PER_HOUR',
-            p_value: rate.value,
-            p_valid_from: rate.validFrom,
-            p_equipment_id: null,
-            p_source: 'MANUAL',
-            p_calc_params: {},
-            p_notes: 'Taxa combinada (energia + depreciação) informada no assistente inicial',
-          })
-        : null;
-      return { equipmentId, rateId };
-    },
-    success: (r) => (r.equipmentId && r.rateId ? 'Impressora e taxa salvas.' : r.equipmentId ? 'Impressora cadastrada.' : 'Taxa por hora registrada.'),
-    onSuccess: () => onDone?.(),
+/** Passo "Impressora" do assistente (save_equipment, tipo PRINTER). */
+export function useSavePrinter(onDone?: (id: number) => void) {
+  return useWrite<PrinterInput, number>({
+    mutationFn: (printer) => rpc<number>('save_equipment', { p_equipment: { ...printer, kind: 'PRINTER' } }),
+    success: (_id, printer) => `“${printer.name}” cadastrada.`,
+    onSuccess: (id) => onDone?.(id),
+    toastError: false,
+  });
+}
+
+/** Passo "Taxa operacional": taxa combinada por hora (energia + depreciação), global, com vigência. */
+export function useCreateOperationalRate(onDone?: (id: number) => void) {
+  return useWrite<{ value: string; validFrom: string }, number>({
+    mutationFn: ({ value, validFrom }) =>
+      rpc<number>('create_cost_rate', {
+        p_rate_type: 'OPERATIONAL_PER_HOUR',
+        p_value: value,
+        p_valid_from: validFrom,
+        p_equipment_id: null,
+        p_source: 'MANUAL',
+        p_calc_params: {},
+        p_notes: 'Taxa combinada (energia + depreciação) informada no assistente inicial',
+      }),
+    success: 'Taxa por hora registrada.',
+    onSuccess: (id) => onDone?.(id),
     toastError: false,
   });
 }

@@ -17,7 +17,7 @@ export interface StepNav {
   busy: boolean;
 }
 
-export function StepFooter({ nav, children, skipLabel = 'Pular este passo' }: { nav: StepNav; children?: ReactNode; skipLabel?: string }) {
+export function StepFooter({ nav, children, skipLabel = 'Pular por agora' }: { nav: StepNav; children?: ReactNode; skipLabel?: string }) {
   return (
     <div className="flex flex-col-reverse gap-2 border-t border-line px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
       {nav.back ? (
@@ -29,7 +29,7 @@ export function StepFooter({ nav, children, skipLabel = 'Pular este passo' }: { 
       )}
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
         {nav.status !== 'done' ? (
-          <Button variant="outline" onClick={nav.skip} disabled={nav.busy}>
+          <Button variant="outline" onClick={nav.skip} disabled={nav.busy} title="O passo fica pendente e aparece na Visão geral">
             <SkipForward /> {skipLabel}
           </Button>
         ) : null}

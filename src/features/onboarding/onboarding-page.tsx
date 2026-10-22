@@ -1,19 +1,33 @@
-import { CircleCheck, Lock, SkipForward } from 'lucide-react';
-import { type ReactNode, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { CircleCheck, ListChecks, Lock } from 'lucide-react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router';
 import { toast } from 'sonner';
 import { Page, PageHeader } from '@/components/layout/page';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader } from '@/components/ui/card';
 import { EmptyState, ErrorState, LoadingBlock } from '@/components/ui/states';
 import { type OnboardingSnapshot, useOnboardingSnapshot, useSaveOnboardingState } from '@/data/settings';
-import { type OnboardingState, useMember } from '@/features/member/member-context';
+import { useMember } from '@/features/member/member-context';
 import { BackLink } from '@/features/settings/bits';
 import { cn } from '@/lib/cn';
-import { initialStep, nextStep, previousStep, STEPS, type StepKey, type StepStatus, stepIndex, stepStatus, updateState } from './onboarding-logic';
+import {
+  computeStatuses,
+  initialView,
+  nextView,
+  ONBOARDING_STEPS,
+  pendingKeys,
+  previousView,
+  samePending,
+  type StepKey,
+  type StepStatus,
+  stepIndex,
+  updateState,
+  type WizardState,
+  type WizardView,
+} from './onboarding-logic';
 import type { StepNav } from './step-ui';
-import { StepFinish, StepItems, StepOpening, StepProducts, StepPurchases } from './steps-guides';
-import { StepAccounts, StepCompany, StepPrinter } from './steps-setup';
+import { StepChannels, StepComponents, StepFilaments, StepPurchases, StepSummary } from './steps-guides';
+import { StepAccounts, StepCompany, StepPrinter, StepRate } from './steps-setup';
 
 /** Assistente de configuração inicial (US-0.11): passos com progresso salvo em settings.onboarding_state. */
 export function OnboardingPage() {
@@ -23,7 +37,7 @@ export function OnboardingPage() {
   if (!allowed) {
     return (
       <Page>
-        <PageHeader title="Configuração inicial" />
+        <PageHeader back={<BackLink />} title="Configuração inicial" />
         <EmptyState icon={<Lock />} title="Sem permissão" description="Só o perfil Dono faz a configuração inicial." />
       </Page>
     );
@@ -33,19 +47,20 @@ export function OnboardingPage() {
   return <Wizard snapshot={snapshot.data} />;
 }
 
-const STATUS_LABELS: Record<StepStatus, string> = { done: 'feito', skipped: 'pulado', pending: 'pendente' };
+const STATUS_LABELS: Record<StepStatus, string> = { done: 'feito', pending: 'pendente' };
+const TOTAL = ONBOARDING_STEPS.length;
 
-function StatusIcon({ status, index, active }: { status: StepStatus; index: number; active: boolean }) {
+function StatusIcon({ status, label, active }: { status: StepStatus; label: ReactNode; active: boolean }) {
   return (
     <span
       aria-hidden
       className={cn(
         'grid size-8 shrink-0 place-items-center rounded-full text-xs font-bold ring-1 ring-inset',
-        status === 'done' ? 'bg-success-soft text-success ring-success/30' : status === 'skipped' ? 'bg-warning-soft text-warning ring-warning/30' : 'bg-panel text-muted ring-line-strong',
+        status === 'done' ? 'bg-success-soft text-success ring-success/30' : 'bg-panel text-muted ring-line-strong',
         active && 'bg-ink text-brand-fg ring-ink',
       )}
     >
-      {status === 'done' && !active ? <CircleCheck className="size-4" /> : status === 'skipped' && !active ? <SkipForward className="size-3.5" /> : index + 1}
+      {status === 'done' && !active ? <CircleCheck className="size-4" /> : label}
     </span>
   );
 }
@@ -53,50 +68,69 @@ function StatusIcon({ status, index, active }: { status: StepStatus; index: numb
 function Wizard({ snapshot }: { snapshot: OnboardingSnapshot }) {
   const { settings } = useMember();
   const navigate = useNavigate();
-  const [state, setState] = useState<OnboardingState>(() => settings.onboarding_state ?? {});
-  const statuses = useMemo(
-    () => Object.fromEntries(STEPS.map((s) => [s.key, stepStatus(s.key, snapshot, settings.go_live_date, state)])) as Record<StepKey, StepStatus>,
-    [snapshot, settings.go_live_date, state],
-  );
-  const [current, setCurrent] = useState<StepKey>(() => initialStep(statuses, state));
+  const [params, setParams] = useSearchParams();
+  const [state, setState] = useState<WizardState>(() => settings.onboarding_state ?? {});
+  const statuses = useMemo(() => computeStatuses(snapshot, settings.go_live_date, state), [snapshot, settings.go_live_date, state]);
+  const [view, setView] = useState<WizardView>(() => initialView(statuses, state, params.get('passo')));
   const save = useSaveOnboardingState();
   const alreadyDone = settings.onboarding_state?.done === true;
+  const pending = pendingKeys(statuses);
 
-  const go = (key: StepKey, change: { complete?: StepKey; skip?: StepKey } = {}) => {
-    const next = updateState(state, { step: key, ...change });
-    setState(next);
-    setCurrent(key);
+  // Mantém a lista de pendentes da Visão geral em dia com os dados (cadastros feitos fora do assistente).
+  const synced = useRef(false);
+  useEffect(() => {
+    if (synced.current || samePending(state.pending, pending)) return;
+    synced.current = true;
+    save.mutate(updateState(state, { step: (state.step as WizardView | undefined) ?? view, pending }));
+  }, [state, pending, view, save]);
+
+  // ?passo= vale só para abrir; depois a navegação é interna.
+  useEffect(() => {
+    if (!params.has('passo')) return;
+    const next = new URLSearchParams(params);
+    next.delete('passo');
+    setParams(next, { replace: true });
+  }, [params, setParams]);
+
+  const open = (next: WizardView) => {
+    setView(next);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    save.mutate(next);
+  };
+
+  /** Conclui ou pula o passo atual: salva o progresso e abre o próximo. */
+  const advance = (change: { complete?: StepKey; skip?: StepKey }) => {
+    const next = nextView(view);
+    const updated = updateState(state, { step: next, pending, ...change });
+    setState(updated);
+    open(next);
+    save.mutate(updated);
   };
 
   const finish = () => {
-    const next = updateState(state, { step: 'concluir', complete: 'concluir', done: true });
-    save.mutate(next, {
+    const updated = updateState(state, { step: 'resumo', pending, done: true, skipPending: true });
+    save.mutate(updated, {
       onSuccess: () => {
-        setState(next);
-        toast.success('Configuração concluída. Bom trabalho!');
+        setState(updated);
+        toast.success(pending.length ? 'Configuração concluída. Os passos pendentes ficam na Visão geral.' : 'Configuração concluída. Bom trabalho!');
         navigate('/');
       },
     });
   };
 
-  const prev = previousStep(current);
+  const prev = previousView(view);
   const nav: StepNav = {
-    status: statuses[current],
-    complete: () => (current === 'concluir' ? finish() : go(nextStep(current) ?? 'concluir', { complete: current })),
-    skip: () => go(nextStep(current) ?? 'concluir', { skip: current }),
-    back: prev ? () => go(prev) : null,
+    status: view === 'resumo' ? 'done' : statuses[view],
+    complete: () => (view === 'resumo' ? finish() : advance({ complete: view })),
+    skip: () => (view === 'resumo' ? undefined : advance({ skip: view })),
+    back: prev ? () => open(prev) : null,
     busy: save.isPending,
   };
 
-  const index = stepIndex(current);
-  const step = STEPS[index]!;
-  const doneCount = STEPS.filter((s) => s.key !== 'concluir' && statuses[s.key] === 'done').length;
-  const total = STEPS.length - 1;
+  const index = view === 'resumo' ? TOTAL : stepIndex(view);
+  const doneCount = TOTAL - pending.length;
 
   let body: ReactNode;
-  switch (current) {
+  switch (view) {
     case 'empresa':
       body = <StepCompany nav={nav} />;
       break;
@@ -106,60 +140,72 @@ function Wizard({ snapshot }: { snapshot: OnboardingSnapshot }) {
     case 'impressora':
       body = <StepPrinter nav={nav} snapshot={snapshot} />;
       break;
-    case 'itens':
-      body = <StepItems nav={nav} snapshot={snapshot} />;
+    case 'taxa':
+      body = <StepRate nav={nav} snapshot={snapshot} />;
       break;
-    case 'produtos':
-      body = <StepProducts nav={nav} snapshot={snapshot} />;
+    case 'filamentos':
+      body = <StepFilaments nav={nav} snapshot={snapshot} />;
+      break;
+    case 'componentes':
+      body = <StepComponents nav={nav} snapshot={snapshot} />;
       break;
     case 'compras':
       body = <StepPurchases nav={nav} snapshot={snapshot} />;
       break;
-    case 'estoque':
-      body = <StepOpening nav={nav} snapshot={snapshot} />;
+    case 'canais':
+      body = <StepChannels nav={nav} />;
       break;
-    case 'concluir':
-      body = <StepFinish nav={nav} statuses={statuses} onOpen={(key) => go(key)} alreadyDone={alreadyDone} />;
+    case 'resumo':
+      body = <StepSummary nav={nav} statuses={statuses} onOpen={open} alreadyDone={alreadyDone} />;
       break;
   }
+
+  const sideItems: Array<{ key: WizardView; title: string; status: StepStatus; label: ReactNode; caption: string }> = [
+    ...ONBOARDING_STEPS.map((s, i) => ({ key: s.key, title: s.title, status: statuses[s.key], label: i + 1, caption: STATUS_LABELS[statuses[s.key]] })),
+    { key: 'resumo', title: 'Resumo', status: alreadyDone ? 'done' : 'pending', label: <ListChecks className="size-4" />, caption: alreadyDone ? 'concluído' : 'concluir' },
+  ];
+
+  const title = view === 'resumo' ? 'Resumo' : `${index + 1}. ${ONBOARDING_STEPS[index]!.title}`;
+  const description = view === 'resumo' ? 'Revise e conclua' : ONBOARDING_STEPS[index]!.short;
 
   return (
     <Page className="max-w-5xl">
       <PageHeader
-        back={
-          <BackLink />
-        }
+        back={<BackLink />}
         title="Configuração inicial"
-        description="Um passo a passo para colocar a Wabee no ar. O progresso fica salvo: dá para parar e continuar depois."
+        description="Um passo a passo para colocar a Wabee no ar. O progresso fica salvo; passos pulados ficam pendentes na Visão geral."
       />
 
       {/* Celular: progresso e atalhos para os passos. */}
       <div className="mb-4 lg:hidden">
         <div className="mb-2 flex items-baseline justify-between gap-2 text-sm">
-          <span className="font-medium text-ink">
-            Passo {index + 1} de {STEPS.length}
-          </span>
+          <span className="font-medium text-ink">{view === 'resumo' ? 'Resumo' : `Passo ${index + 1} de ${TOTAL}`}</span>
           <span className="text-xs text-muted">
-            {doneCount} de {total} feitos
+            {doneCount} de {TOTAL} feitos
           </span>
         </div>
-        <div className="h-2 overflow-hidden rounded-full bg-subtle" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={doneCount} aria-label="Passos feitos">
-          <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${(doneCount / total) * 100}%` }} />
+        <div className="h-2 overflow-hidden rounded-full bg-subtle" role="progressbar" aria-valuemin={0} aria-valuemax={TOTAL} aria-valuenow={doneCount} aria-label="Passos feitos">
+          <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${(doneCount / TOTAL) * 100}%` }} />
         </div>
-        <ol className="-mx-1 mt-3 flex gap-1 overflow-x-auto px-1 pb-1" aria-label="Passos">
-          {STEPS.map((s, i) => (
+        <ol className="-mx-1 mt-2 flex gap-0.5 overflow-x-auto px-1 pb-1" aria-label="Passos">
+          {ONBOARDING_STEPS.map((s, i) => (
             <li key={s.key}>
               <button
                 type="button"
-                onClick={() => go(s.key)}
-                aria-current={s.key === current ? 'step' : undefined}
+                onClick={() => open(s.key)}
+                aria-current={s.key === view ? 'step' : undefined}
                 aria-label={`${i + 1}. ${s.title} (${STATUS_LABELS[statuses[s.key]]})`}
                 className="grid size-10 place-items-center rounded-full"
               >
-                <StatusIcon status={statuses[s.key]} index={i} active={s.key === current} />
+                <StatusIcon status={statuses[s.key]} label={i + 1} active={s.key === view} />
               </button>
             </li>
           ))}
+          <li>
+            <button type="button" onClick={() => open('resumo')} aria-current={view === 'resumo' ? 'step' : undefined} aria-label="Resumo" className="grid size-10 place-items-center rounded-full">
+              <StatusIcon status={alreadyDone ? 'done' : 'pending'} label={<ListChecks className="size-4" />} active={view === 'resumo'} />
+            </button>
+          </li>
         </ol>
       </div>
 
@@ -170,26 +216,26 @@ function Wizard({ snapshot }: { snapshot: OnboardingSnapshot }) {
               <div className="mb-1.5 flex justify-between text-xs text-muted">
                 <span>Progresso</span>
                 <span>
-                  {doneCount} de {total}
+                  {doneCount} de {TOTAL}
                 </span>
               </div>
               <div className="h-1.5 overflow-hidden rounded-full bg-subtle">
-                <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${(doneCount / total) * 100}%` }} />
+                <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${(doneCount / TOTAL) * 100}%` }} />
               </div>
             </div>
             <ol className="space-y-0.5">
-              {STEPS.map((s, i) => (
-                <li key={s.key}>
+              {sideItems.map((item) => (
+                <li key={item.key}>
                   <button
                     type="button"
-                    onClick={() => go(s.key)}
-                    aria-current={s.key === current ? 'step' : undefined}
-                    className={cn('flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left hover:bg-subtle', s.key === current && 'bg-panel shadow-[var(--shadow-card)] ring-1 ring-line')}
+                    onClick={() => open(item.key)}
+                    aria-current={item.key === view ? 'step' : undefined}
+                    className={cn('flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left hover:bg-subtle', item.key === view && 'bg-panel shadow-[var(--shadow-card)] ring-1 ring-line')}
                   >
-                    <StatusIcon status={statuses[s.key]} index={i} active={s.key === current} />
+                    <StatusIcon status={item.status} label={item.label} active={item.key === view} />
                     <span className="min-w-0">
-                      <span className={cn('block truncate text-sm', s.key === current ? 'font-semibold text-ink' : 'text-ink-soft')}>{s.title}</span>
-                      <span className="block truncate text-xs text-muted">{STATUS_LABELS[statuses[s.key]]}</span>
+                      <span className={cn('block truncate text-sm', item.key === view ? 'font-semibold text-ink' : 'text-ink-soft')}>{item.title}</span>
+                      <span className="block truncate text-xs text-muted">{item.caption}</span>
                     </span>
                   </button>
                 </li>
@@ -200,15 +246,11 @@ function Wizard({ snapshot }: { snapshot: OnboardingSnapshot }) {
 
         <Card className="min-w-0">
           <CardHeader
-            title={`${index + 1}. ${step.title}`}
-            description={step.short}
-            actions={
-              current !== 'concluir' ? (
-                <Badge tone={statuses[current] === 'done' ? 'success' : statuses[current] === 'skipped' ? 'warning' : 'neutral'}>{STATUS_LABELS[statuses[current]]}</Badge>
-              ) : null
-            }
+            title={title}
+            description={description}
+            actions={view !== 'resumo' ? <Badge tone={statuses[view] === 'done' ? 'success' : 'warning'}>{STATUS_LABELS[statuses[view]]}</Badge> : null}
           />
-          <div key={current}>{body}</div>
+          <div key={view}>{body}</div>
         </Card>
       </div>
     </Page>

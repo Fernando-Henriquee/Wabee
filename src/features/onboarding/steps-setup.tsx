@@ -1,4 +1,4 @@
-import { ArrowRight, CreditCard, Landmark, Plus, Printer } from 'lucide-react';
+import { ArrowRight, CreditCard, Landmark, Plus } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { Link } from 'react-router';
 import { Badge } from '@/components/ui/badge';
@@ -13,7 +13,8 @@ import {
   TAX_REGIME_LABELS,
   type TaxRegime,
   useCreatePaymentAccount,
-  useSavePrinterAndRate,
+  useCreateOperationalRate,
+  useSavePrinter,
   useSaveSettings,
 } from '@/data/settings';
 import { useMember } from '@/features/member/member-context';
@@ -63,7 +64,7 @@ export function StepCompany({ nav }: { nav: StepNav }) {
       <div className="space-y-4 p-4">
         <Explain>
           Comece pelo básico. A <strong>data de início do uso</strong> é o dia a partir do qual tudo passa a ser lançado aqui. Compras e vendas de antes dela entram como{' '}
-          <strong>“anteriores ao sistema”</strong> (passo 6) e não mexem no caixa de hoje. Use hoje, ou o dia 1º do mês para fechar meses inteiros.
+          <strong>“anteriores ao sistema”</strong> (passo “Compras já feitas”) e não mexem no caixa de hoje. Use hoje, ou o dia 1º do mês para fechar meses inteiros.
         </Explain>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Nome da empresa" required>
@@ -286,38 +287,108 @@ export function StepAccounts({ nav, snapshot }: { nav: StepNav; snapshot: Onboar
 }
 
 // -----------------------------------------------------------------------------
-// 3. Impressora e taxa
+// 3. Impressora
 // -----------------------------------------------------------------------------
 
 type PrinterMode = 'agora' | 'compra';
 
 export function StepPrinter({ nav, snapshot }: { nav: StepNav; snapshot: OnboardingSnapshot }) {
-  const { settings, today } = useMember();
-  const hasRate = hasCurrentMachineRate(snapshot);
-  const currentRate = snapshot.rates.find((r) => r.rate_type === 'OPERATIONAL_PER_HOUR' && r.valid_to === null && r.equipment_id === null);
   const hasPrinter = snapshot.printers.length > 0;
   const [mode, setMode] = useState<PrinterMode>('agora');
   const [name, setName] = useState('Impressora 1');
   const [brand, setBrand] = useState('');
   const [model, setModel] = useState('');
   const [power, setPower] = useState<string | null>(null);
-  const [rate, setRate] = useState<string | null>('1.2');
-  const [validFrom, setValidFrom] = useState(settings.go_live_date ?? today());
   const [error, setError] = useState<string | null>(null);
-  const save = useSavePrinterAndRate(nav.complete);
-  const nothingToSave = hasRate && (hasPrinter || mode === 'compra');
+  const save = useSavePrinter(() => nav.complete());
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
     setError(null);
-    if (nothingToSave) return nav.complete();
-    const printer = !hasPrinter && mode === 'agora' ? { name: name.trim(), brand: brand.trim() || null, model: model.trim() || null, acquired_at: null, avg_power_w: power } : null;
-    if (printer && !printer.name) return setError('Informe o nome da impressora.');
-    if (!hasRate) {
-      if (rate === null || toNumber(rate) <= 0) return setError('Informe a taxa por hora (ex.: 1,20).');
-      if (!isValidISODate(validFrom)) return setError('Informe desde quando a taxa vale.');
-    }
-    save.mutate({ printer, rate: hasRate ? null : { value: rate!, validFrom } }, { onError: (e) => setError(describeError(e)) });
+    // Já cadastrada, ou vai entrar pela compra anterior: só confirma o passo.
+    if (hasPrinter || mode === 'compra') return nav.complete();
+    if (!name.trim()) return setError('Informe o nome da impressora.');
+    save.mutate({ name: name.trim(), brand: brand.trim() || null, model: model.trim() || null, avg_power_w: power }, { onError: (e) => setError(describeError(e)) });
+  };
+
+  return (
+    <form onSubmit={submit} noValidate>
+      <div className="space-y-4 p-4">
+        <Explain>
+          Cadastre a impressora 3D para planejar as impressões e acompanhar as horas de uso. Se ela foi comprada <strong>antes do início do uso</strong> e você vai lançar essa
+          compra no passo “Compras já feitas”, deixe que ela seja cadastrada por lá: entra com o valor pago e não fica duplicada.
+        </Explain>
+        {hasPrinter ? (
+          <DoneNote>
+            {snapshot.printers.map((p) => p.name).join(', ')} {snapshot.printers.length === 1 ? 'já está cadastrada' : 'já estão cadastradas'}.{' '}
+            <Link to="/producao/equipamentos" className="underline">
+              Ver equipamentos
+            </Link>
+          </DoneNote>
+        ) : (
+          <>
+            <ChoiceCards
+              name="impressora-modo"
+              legend="Como cadastrar"
+              columns={2}
+              value={mode}
+              onChange={setMode}
+              options={[
+                { value: 'agora', label: 'Cadastrar agora', description: 'A compra da impressora não vai ser lançada no sistema.' },
+                { value: 'compra', label: 'Pela compra já feita', description: 'Ela é cadastrada sozinha ao receber a compra, com o valor pago.' },
+              ]}
+            />
+            {mode === 'agora' ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="Nome" required hint="Como aparece no quadro de produção.">
+                  <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
+                </Field>
+                <Field label="Potência média (W)" hint="Opcional; usada se um dia separar a energia.">
+                  <DecimalInput decimals={0} value={power} onValueChange={setPower} />
+                </Field>
+                <Field label="Marca">
+                  <Input value={brand} onChange={(e) => setBrand(e.target.value)} maxLength={60} placeholder="Ex.: Bambu Lab" />
+                </Field>
+                <Field label="Modelo">
+                  <Input value={model} onChange={(e) => setModel(e.target.value)} maxLength={60} placeholder="Ex.: A1" />
+                </Field>
+              </div>
+            ) : (
+              <p className="text-sm text-muted">Sem impressora cadastrada, o planejamento de impressões fica indisponível até a compra ser recebida.</p>
+            )}
+          </>
+        )}
+        <FormError>{error}</FormError>
+      </div>
+      <StepFooter nav={nav}>
+        <Button type="submit" loading={save.isPending || nav.busy}>
+          {hasPrinter || mode === 'compra' ? 'Continuar' : 'Salvar e continuar'} <ArrowRight />
+        </Button>
+      </StepFooter>
+    </form>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// 4. Taxa operacional
+// -----------------------------------------------------------------------------
+
+export function StepRate({ nav, snapshot }: { nav: StepNav; snapshot: OnboardingSnapshot }) {
+  const { settings, today } = useMember();
+  const hasRate = hasCurrentMachineRate(snapshot);
+  const currentRate = snapshot.rates.find((r) => r.rate_type === 'OPERATIONAL_PER_HOUR' && r.valid_to === null && r.equipment_id === null);
+  const [rate, setRate] = useState<string | null>('1.2');
+  const [validFrom, setValidFrom] = useState(settings.go_live_date ?? today());
+  const [error, setError] = useState<string | null>(null);
+  const save = useCreateOperationalRate(() => nav.complete());
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    if (hasRate) return nav.complete();
+    if (rate === null || toNumber(rate) <= 0) return setError('Informe a taxa por hora (ex.: 1,20).');
+    if (!isValidISODate(validFrom)) return setError('Informe desde quando a taxa vale.');
+    save.mutate({ value: rate, validFrom }, { onError: (e) => setError(describeError(e)) });
   };
 
   return (
@@ -325,84 +396,33 @@ export function StepPrinter({ nav, snapshot }: { nav: StepNav; snapshot: Onboard
       <div className="space-y-4 p-4">
         <Explain>
           <strong>R$ 1,20 por hora</strong> é a taxa que vocês já usam hoje: junta a <strong>energia elétrica</strong> e o <strong>desgaste da impressora</strong> (depreciação) numa
-          taxa só. Cada hora de impressão soma esse valor ao custo das peças. Depois, em Produção → Taxas, dá para separar energia e depreciação ou mudar o valor com nova vigência.
+          taxa só. Cada hora de impressão soma esse valor ao custo das peças. Depois, em Produção → Taxas, dá para separar energia e depreciação ou mudar o valor com nova vigência
+          (o que já foi impresso não muda).
         </Explain>
-
-        <section className="space-y-3" aria-label="Impressora">
-          <h3 className="flex items-center gap-2 text-sm font-semibold">
-            <Printer className="size-4 text-accent-ink" aria-hidden /> Impressora
-          </h3>
-          {hasPrinter ? (
-            <DoneNote>
-              {snapshot.printers.map((p) => p.name).join(', ')} {snapshot.printers.length === 1 ? 'já está cadastrada' : 'já estão cadastradas'}.{' '}
-              <Link to="/producao/equipamentos" className="underline">
-                Ver equipamentos
-              </Link>
-            </DoneNote>
-          ) : (
-            <>
-              <ChoiceCards
-                name="impressora-modo"
-                legend="Como cadastrar"
-                columns={2}
-                value={mode}
-                onChange={setMode}
-                options={[
-                  { value: 'agora', label: 'Cadastrar agora', description: 'Use se a compra da impressora não vai ser lançada no sistema.' },
-                  {
-                    value: 'compra',
-                    label: 'Pela compra anterior (passo 6)',
-                    description: 'Ela é cadastrada sozinha ao receber a compra, já com o valor pago. Evita cadastro duplicado.',
-                  },
-                ]}
-              />
-              {mode === 'agora' ? (
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <Field label="Nome" required hint="Como aparece no quadro de produção.">
-                    <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
-                  </Field>
-                  <Field label="Potência média (W)" hint="Opcional; usada se um dia separar a energia.">
-                    <DecimalInput decimals={0} suffix="W" value={power} onValueChange={setPower} />
-                  </Field>
-                  <Field label="Marca">
-                    <Input value={brand} onChange={(e) => setBrand(e.target.value)} maxLength={60} placeholder="Ex.: Bambu Lab" />
-                  </Field>
-                  <Field label="Modelo">
-                    <Input value={model} onChange={(e) => setModel(e.target.value)} maxLength={60} placeholder="Ex.: A1" />
-                  </Field>
-                </div>
-              ) : null}
-            </>
-          )}
-        </section>
-
-        <section className="space-y-3" aria-label="Taxa por hora">
-          <h3 className="text-sm font-semibold">Taxa por hora de impressão</h3>
-          {hasRate ? (
-            <DoneNote>
-              {currentRate
-                ? `Taxa combinada de ${formatCost(currentRate.value, 4)}/h vigente desde ${formatDateBR(currentRate.valid_from)}.`
-                : 'Já há taxas por hora vigentes (energia e depreciação separadas).'}{' '}
-              <Link to="/producao/taxas" className="underline">
-                Ver taxas
-              </Link>
-            </DoneNote>
-          ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label="Taxa combinada (energia + depreciação)" required hint={`Vale para todas as impressoras. ${rate ? `${formatBRL(toNumber(rate) * 10)} a cada 10 horas impressas.` : ''}`}>
-                <DecimalInput decimals={4} prefix="R$" suffix="/h" value={rate} onValueChange={setRate} />
-              </Field>
-              <Field label="Vale a partir de" required hint="Normalmente, a data de início do uso.">
-                <Input type="date" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} />
-              </Field>
-            </div>
-          )}
-        </section>
+        {hasRate ? (
+          <DoneNote>
+            {currentRate
+              ? `Taxa combinada de ${formatCost(currentRate.value, 4)}/h vigente desde ${formatDateBR(currentRate.valid_from)}.`
+              : 'Já há taxas por hora vigentes (energia e depreciação separadas).'}{' '}
+            <Link to="/producao/taxas" className="underline">
+              Ver taxas
+            </Link>
+          </DoneNote>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label="Taxa combinada por hora" required hint={rate ? `Vale para todas as impressoras: ${formatBRL(toNumber(rate) * 10)} a cada 10 horas impressas.` : 'Vale para todas as impressoras.'}>
+              <DecimalInput decimals={4} prefix="R$" suffix="/h" value={rate} onValueChange={setRate} />
+            </Field>
+            <Field label="Vale a partir de" required hint="Normalmente, a data de início do uso.">
+              <Input type="date" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} />
+            </Field>
+          </div>
+        )}
         <FormError>{error}</FormError>
       </div>
       <StepFooter nav={nav}>
         <Button type="submit" loading={save.isPending || nav.busy}>
-          {nothingToSave ? 'Continuar' : 'Salvar e continuar'} <ArrowRight />
+          {hasRate ? 'Continuar' : 'Salvar e continuar'} <ArrowRight />
         </Button>
       </StepFooter>
     </form>

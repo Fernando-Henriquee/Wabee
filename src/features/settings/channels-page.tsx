@@ -24,7 +24,7 @@ function ChannelName({ row, isDefault }: { row: ChannelWithFees; isDefault: bool
         {isDefault ? <Badge tone="accent">padrão</Badge> : null}
         {row.active ? null : <Badge>inativo</Badge>}
       </span>
-      <span className="block text-xs font-normal text-muted">{CHANNEL_KIND_LABELS[row.kind]}</span>
+      {CHANNEL_KIND_LABELS[row.kind] !== row.name ? <span className="block text-xs font-normal text-muted">{CHANNEL_KIND_LABELS[row.kind]}</span> : null}
     </span>
   );
 }

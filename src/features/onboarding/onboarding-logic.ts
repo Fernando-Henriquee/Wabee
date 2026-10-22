@@ -1,37 +1,61 @@
 import type { OnboardingSnapshot } from '@/data/settings';
 import type { OnboardingState } from '@/features/member/member-context';
 
-/** Passos do assistente inicial (US-0.11). A ordem é a sugerida para colocar a Wabee no ar. */
-export const STEPS = [
-  { key: 'empresa', title: 'Empresa', short: 'Nome, início do uso e impostos' },
-  { key: 'contas', title: 'Contas', short: 'Pix da empresa e cartão do dono' },
-  { key: 'impressora', title: 'Impressora e taxa', short: 'Custo por hora de impressão' },
-  { key: 'itens', title: 'Filamentos e itens', short: 'O que você usa para produzir' },
-  { key: 'produtos', title: 'Produtos e fichas', short: 'O que você vende e como é feito' },
-  { key: 'compras', title: 'Compras anteriores', short: 'O que já foi comprado no cartão' },
-  { key: 'estoque', title: 'Saldo inicial', short: 'O que já existe no estoque' },
-  { key: 'concluir', title: 'Concluir', short: 'Revisar e começar a usar' },
+/**
+ * Passos do assistente inicial, na ordem da US-0.11. Funções puras (sem React): a
+ * Visão geral pode importar ONBOARDING_STEPS e pendingStepsFromState daqui.
+ */
+export const ONBOARDING_STEPS = [
+  { key: 'empresa', title: 'Dados da empresa', short: 'Nome, início do uso e impostos' },
+  { key: 'contas', title: 'Contas financeiras', short: 'Pix da empresa e cartão do dono' },
+  { key: 'impressora', title: 'Impressora', short: 'A máquina que imprime as peças' },
+  { key: 'taxa', title: 'Taxa operacional', short: 'Custo por hora de impressão' },
+  { key: 'filamentos', title: 'Filamentos em estoque', short: 'Cadastro e o que você já tem' },
+  { key: 'componentes', title: 'Componentes em estoque', short: 'Argolas, ímãs e embalagens' },
+  { key: 'compras', title: 'Compras já feitas', short: 'O que foi comprado antes do sistema' },
+  { key: 'canais', title: 'Canais de venda', short: 'Onde você vende e as taxas' },
 ] as const;
 
-export type StepKey = (typeof STEPS)[number]['key'];
-export type StepStatus = 'done' | 'skipped' | 'pending';
+export type StepKey = (typeof ONBOARDING_STEPS)[number]['key'];
+/** Tela do assistente: um passo ou o resumo final. */
+export type WizardView = StepKey | 'resumo';
+/** "Pular" deixa o passo pendente (listado na Visão geral). */
+export type StepStatus = 'done' | 'pending';
 
-const KEYS = STEPS.map((s) => s.key) as StepKey[];
+/**
+ * Estado salvo em settings.onboarding_state:
+ *  - step: tela aberta por último;
+ *  - completed: passos concluídos pela pessoa;
+ *  - skipped: passos pulados que continuam pendentes (a Visão geral conta esta lista; ao
+ *    concluir o assistente, todos os pendentes entram nela);
+ *  - pending: passos ainda não feitos (calculado pelos dados; é o que a Visão geral lista);
+ *  - done: assistente concluído.
+ */
+export type WizardState = OnboardingState & { pending?: string[] };
+
+const KEYS = ONBOARDING_STEPS.map((s) => s.key) as StepKey[];
 
 export function isStepKey(value: unknown): value is StepKey {
   return typeof value === 'string' && (KEYS as string[]).includes(value);
+}
+
+export function isWizardView(value: unknown): value is WizardView {
+  return value === 'resumo' || isStepKey(value);
 }
 
 export function stepIndex(key: StepKey): number {
   return KEYS.indexOf(key);
 }
 
-export function nextStep(key: StepKey): StepKey | null {
-  return KEYS[stepIndex(key) + 1] ?? null;
+/** Próxima tela (depois do último passo vem o resumo). */
+export function nextView(view: WizardView): WizardView {
+  if (view === 'resumo') return 'resumo';
+  return KEYS[stepIndex(view) + 1] ?? 'resumo';
 }
 
-export function previousStep(key: StepKey): StepKey | null {
-  const index = stepIndex(key);
+export function previousView(view: WizardView): WizardView | null {
+  if (view === 'resumo') return KEYS[KEYS.length - 1]!;
+  const index = stepIndex(view);
   return index > 0 ? KEYS[index - 1]! : null;
 }
 
@@ -43,57 +67,92 @@ export function hasCurrentMachineRate(snapshot: Pick<OnboardingSnapshot, 'rates'
 }
 
 /** O passo já está feito pelos dados (independe de a pessoa ter clicado em "continuar"). */
-export function detectDone(key: StepKey, snapshot: OnboardingSnapshot, goLiveDate: string | null, state: OnboardingState): boolean {
+export function detectDone(key: StepKey, snapshot: OnboardingSnapshot, goLiveDate: string | null): boolean {
+  const count = (kind: string) => snapshot.itemCounts[kind] ?? 0;
   switch (key) {
     case 'empresa':
       return goLiveDate !== null;
     case 'contas':
       return snapshot.accounts.some((a) => a.owner === 'EMPRESA');
     case 'impressora':
-      // Sem impressora ainda, vale a escolha "ela entra pela compra anterior" (passo marcado como concluído).
-      return hasCurrentMachineRate(snapshot) && (snapshot.printers.length > 0 || (state.completed ?? []).includes('impressora'));
-    case 'itens':
-      return (snapshot.itemCounts.FILAMENT ?? 0) > 0;
-    case 'produtos':
-      return snapshot.products > 0;
+      return snapshot.printers.length > 0;
+    case 'taxa':
+      return hasCurrentMachineRate(snapshot);
+    case 'filamentos':
+      return count('FILAMENT') > 0;
+    case 'componentes':
+      return count('COMPONENT') + count('PACKAGING') > 0;
     case 'compras':
       return snapshot.openingPurchases.length > 0;
-    case 'estoque':
-      return snapshot.openingMovements > 0;
-    case 'concluir':
-      return state.done === true;
+    case 'canais':
+      // Os canais já vêm cadastrados: o passo é revisar as taxas e confirmar.
+      return false;
   }
 }
 
-export function stepStatus(key: StepKey, snapshot: OnboardingSnapshot, goLiveDate: string | null, state: OnboardingState): StepStatus {
-  if (detectDone(key, snapshot, goLiveDate, state)) return 'done';
-  if (key !== 'impressora' && key !== 'concluir' && (state.completed ?? []).includes(key)) return 'done';
-  if ((state.skipped ?? []).includes(key)) return 'skipped';
+/**
+ * Feito pelos dados ou confirmado pela pessoa (ex.: "a impressora entra pela compra
+ * anterior", "revisei os canais"). Pulado = pendente.
+ */
+export function stepStatus(key: StepKey, snapshot: OnboardingSnapshot, goLiveDate: string | null, state: WizardState): StepStatus {
+  if (detectDone(key, snapshot, goLiveDate) || (state.completed ?? []).includes(key)) return 'done';
   return 'pending';
 }
 
-/** Passo para abrir: o salvo, ou o primeiro ainda pendente. */
-export function initialStep(statuses: Record<StepKey, StepStatus>, state: OnboardingState): StepKey {
-  if (isStepKey(state.step)) return state.step;
-  return KEYS.find((key) => statuses[key] === 'pending') ?? 'concluir';
+export function computeStatuses(snapshot: OnboardingSnapshot, goLiveDate: string | null, state: WizardState): Record<StepKey, StepStatus> {
+  return Object.fromEntries(KEYS.map((key) => [key, stepStatus(key, snapshot, goLiveDate, state)])) as Record<StepKey, StepStatus>;
 }
 
-/** Novo estado depois de concluir, pular ou abrir um passo. */
-export function updateState(state: OnboardingState, change: { step: StepKey; complete?: StepKey; skip?: StepKey; done?: boolean }): OnboardingState {
+export function pendingKeys(statuses: Record<StepKey, StepStatus>): StepKey[] {
+  return KEYS.filter((key) => statuses[key] !== 'done');
+}
+
+/** Tela para abrir: a pedida no endereço (?passo=), a salva, ou o primeiro passo pendente. */
+export function initialView(statuses: Record<StepKey, StepStatus>, state: WizardState, requested?: string | null): WizardView {
+  if (isWizardView(requested)) return requested;
+  if (isWizardView(state.step) && !(state.done && state.step === 'resumo')) return state.step;
+  return KEYS.find((key) => statuses[key] === 'pending') ?? 'resumo';
+}
+
+/** Novo estado depois de concluir ou pular um passo (ou concluir o assistente). */
+export function updateState(
+  state: WizardState,
+  change: { step: WizardView; pending: StepKey[]; complete?: StepKey; skip?: StepKey; done?: boolean; skipPending?: boolean },
+): WizardState {
   const completed = new Set(state.completed ?? []);
   const skipped = new Set(state.skipped ?? []);
+  const pending = new Set<string>(change.pending);
   if (change.complete) {
     completed.add(change.complete);
     skipped.delete(change.complete);
+    pending.delete(change.complete);
   }
   if (change.skip) {
     skipped.add(change.skip);
     completed.delete(change.skip);
+    pending.add(change.skip);
   }
+  // "skipped" só guarda o que continua pendente (a Visão geral conta essa lista); ao concluir o
+  // assistente, tudo o que ficou pendente passa a contar como pulado.
+  if (change.skipPending) for (const key of pending) skipped.add(key);
   return {
     step: change.step,
     completed: KEYS.filter((k) => completed.has(k)),
-    skipped: KEYS.filter((k) => skipped.has(k)),
+    skipped: KEYS.filter((k) => skipped.has(k) && pending.has(k)),
+    pending: KEYS.filter((k) => pending.has(k)),
     done: change.done ?? state.done ?? false,
   };
+}
+
+export function samePending(a: readonly string[] | undefined, b: readonly string[]): boolean {
+  return a !== undefined && a.length === b.length && a.every((key, index) => key === b[index]);
+}
+
+/**
+ * Passos pendentes a partir do estado salvo (para a Visão geral). Antes de o assistente
+ * ser aberto pela primeira vez, todos estão pendentes.
+ */
+export function pendingStepsFromState(state: WizardState | null | undefined): Array<(typeof ONBOARDING_STEPS)[number]> {
+  const keys = state?.pending ?? (state?.done ? [] : KEYS);
+  return ONBOARDING_STEPS.filter((step) => keys.includes(step.key));
 }
