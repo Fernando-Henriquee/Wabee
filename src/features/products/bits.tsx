@@ -1,5 +1,5 @@
 import { TriangleAlert } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { COST_LAYERS } from '@/components/charts/chart';
 import { Input } from '@/components/ui/input';
 import { useFieldControl } from '@/components/ui/field';
@@ -80,23 +80,48 @@ const ROWS: Array<{ key: keyof CostEstimate; label: string; layer: 'material' | 
   { key: 'labor', label: 'Trabalho', layer: 'labor' },
 ];
 
-/** Quadro de custo estimado de uma unidade, por camada (US-4.4, seção 14.7). */
-export function CostBreakdown({ estimate, loading, className }: { estimate: CostEstimate | null | undefined; loading?: boolean; className?: string }) {
+/** Quadro de custo estimado por camada (US-4.4, seção 14.7), por unidade ou por mesa. */
+export function CostBreakdown({ estimate, loading, className, unitsPerPlate }: { estimate: CostEstimate | null | undefined; loading?: boolean; className?: string; unitsPerPlate?: number | null }) {
+  const [perPlate, setPerPlate] = useState(false);
   if (!estimate) return <p className="text-sm text-muted">{loading ? 'Calculando…' : 'Sem estimativa.'}</p>;
+  const units = Math.max(1, unitsPerPlate ?? 1);
+  const f = perPlate ? units : 1;
+  const scaled = (v: number | string | null | undefined) => toNumber(v) * f;
   const values = {
-    material: toNumber(estimate.material),
-    energy: toNumber(estimate.energy),
-    depreciation: toNumber(estimate.depreciation),
-    operational: toNumber(estimate.operational),
-    labor: toNumber(estimate.labor),
+    material: scaled(estimate.material),
+    energy: scaled(estimate.energy),
+    depreciation: scaled(estimate.depreciation),
+    operational: scaled(estimate.operational),
+    labor: scaled(estimate.labor),
   };
+  const minutes = scaled(estimate.machine_minutes);
+  const suffix = perPlate ? 'mesa' : 'un.';
   return (
     <div className={cn('space-y-3', loading && 'opacity-60', className)} aria-busy={loading || undefined}>
+      {units > 1 ? (
+        <div role="radiogroup" aria-label="Mostrar custo" className="inline-flex rounded-lg border border-line bg-subtle p-0.5 text-xs">
+          {[
+            { key: false, label: 'Por unidade' },
+            { key: true, label: `Por mesa (${units} peças)` },
+          ].map((o) => (
+            <button
+              key={String(o.key)}
+              type="button"
+              role="radio"
+              aria-checked={perPlate === o.key}
+              onClick={() => setPerPlate(o.key)}
+              className={cn('h-7 rounded-md px-2.5 font-medium text-muted hover:text-ink', perPlate === o.key && 'bg-panel text-ink shadow-sm')}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div>
-        <p className="text-xs text-muted">Custo de produção por unidade</p>
+        <p className="text-xs text-muted">Custo de produção {perPlate ? `da mesa (${units} peças)` : 'por unidade'}</p>
         <p className={cn('num text-2xl font-semibold', estimate.estimated && 'estimated cursor-help')} title={estimate.estimated ? 'Inclui filamento com custo de referência ou energia/depreciação estimadas' : undefined}>
           {estimate.estimated ? '~' : ''}
-          {formatCost(estimate.total_production, 4)}
+          {formatCost(scaled(estimate.total_production), perPlate ? 2 : 4)}
         </p>
       </div>
       <StackBar values={values} />
@@ -109,7 +134,7 @@ export function CostBreakdown({ estimate, loading, className }: { estimate: Cost
                 <span className="mr-2 inline-block size-2.5 rounded-sm" style={{ background: `var(--color-layer-${r.layer})` }} aria-hidden />
                 {r.label}
               </th>
-              <td className="num py-1.5 text-right">{formatCost(estimate[r.key] as number, 4)}</td>
+              <td className="num py-1.5 text-right">{formatCost(scaled(estimate[r.key] as number), 4)}</td>
             </tr>
           ))}
           <tr>
@@ -117,18 +142,18 @@ export function CostBreakdown({ estimate, loading, className }: { estimate: Cost
               Embalagem
               <span className="block text-xs text-muted">Sai na entrega; entra na margem, fora do custo de produção</span>
             </th>
-            <td className="num py-1.5 text-right align-top">{formatCost(estimate.packaging, 4)}</td>
+            <td className="num py-1.5 text-right align-top">{formatCost(scaled(estimate.packaging), 4)}</td>
           </tr>
         </tbody>
       </table>
       <dl className="grid grid-cols-2 gap-2 text-xs">
         <div className="rounded-lg bg-subtle px-2.5 py-2">
-          <dt className="text-muted">Tempo de máquina / un.</dt>
-          <dd className="num font-medium text-ink">{toNumber(estimate.machine_minutes) < 10 ? `${formatNumber(estimate.machine_minutes, 1)} min` : formatMinutes(estimate.machine_minutes)}</dd>
+          <dt className="text-muted">Tempo de máquina / {suffix}</dt>
+          <dd className="num font-medium text-ink">{minutes < 10 ? `${formatNumber(minutes, 1)} min` : formatMinutes(minutes)}</dd>
         </div>
         <div className="rounded-lg bg-subtle px-2.5 py-2">
-          <dt className="text-muted">Filamento / un.</dt>
-          <dd className="num font-medium text-ink">{formatQty(estimate.grams, 'G')}</dd>
+          <dt className="text-muted">Filamento / {suffix}</dt>
+          <dd className="num font-medium text-ink">{formatQty(scaled(estimate.grams), 'G')}</dd>
         </div>
       </dl>
       {estimate.rate_mode === 'MISSING' ? (

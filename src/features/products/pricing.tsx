@@ -20,7 +20,10 @@ export function ChannelPricingCard({ variant }: { variant: VariantRow }) {
   const { can, settings } = useMember();
   const pricing = useVariantPricing(variant.id);
   const history = useChannelPrices(variant.id);
-  const [editing, setEditing] = useState<ChannelPricing | null>(null);
+  const [editing, setEditing] = useState<{ pricing: ChannelPricing; suggested: boolean } | null>(null);
+  const canApply = (c: ChannelPricing) => c.suggested_price !== null && toNumber(c.suggested_price) !== toNumber(c.price);
+  // Abre o diálogo já com o sugerido: o preço só muda depois de conferir a margem e salvar.
+  const applySuggested = (c: ChannelPricing) => setEditing({ pricing: c, suggested: true });
 
   if (pricing.isError) return <ErrorState error={pricing.error} onRetry={() => void pricing.refetch()} />;
   if (!pricing.data) return <LoadingBlock rows={3} />;
@@ -54,7 +57,7 @@ export function ChannelPricingCard({ variant }: { variant: VariantRow }) {
                 </thead>
                 <tbody className="divide-y divide-line">
                   {data.channels.map((c) => (
-                    <tr key={c.channel_id}>
+                    <tr key={c.channel_id} className={toNumber(c.contribution_margin) < 0 ? 'bg-danger-soft/60' : undefined}>
                       <td className="px-3 py-2.5 font-medium">{c.channel_name}</td>
                       <td className="px-3 py-2.5 text-right">
                         <Money value={c.price} />
@@ -74,9 +77,16 @@ export function ChannelPricingCard({ variant }: { variant: VariantRow }) {
                       <td className="px-3 py-2.5 text-right">{c.suggested_price === null ? <span className="text-xs text-muted">margem impossível</span> : <Money value={c.suggested_price} />}</td>
                       <td className="px-3 py-2.5 text-right">
                         {can('write') ? (
-                          <Button size="sm" variant="ghost" onClick={() => setEditing(c)}>
-                            <Pencil /> Preço
-                          </Button>
+                          <span className="inline-flex gap-1">
+                            {canApply(c) ? (
+                              <Button size="sm" variant="outline" onClick={() => applySuggested(c)}>
+                                Aplicar sugerido
+                              </Button>
+                            ) : null}
+                            <Button size="sm" variant="ghost" onClick={() => setEditing({ pricing: c, suggested: false })}>
+                              <Pencil /> Preço
+                            </Button>
+                          </span>
                         ) : null}
                       </td>
                     </tr>
@@ -86,7 +96,7 @@ export function ChannelPricingCard({ variant }: { variant: VariantRow }) {
             </div>
             <ul className="divide-y divide-line md:hidden">
               {data.channels.map((c) => (
-                <li key={c.channel_id} className="space-y-1.5 px-4 py-3">
+                <li key={c.channel_id} className={toNumber(c.contribution_margin) < 0 ? 'space-y-1.5 bg-danger-soft/60 px-4 py-3' : 'space-y-1.5 px-4 py-3'}>
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-sm font-medium">{c.channel_name}</span>
                     <Money value={c.price} className="text-sm font-semibold" />
@@ -98,9 +108,16 @@ export function ChannelPricingCard({ variant }: { variant: VariantRow }) {
                     <span>Sugerido {c.suggested_price === null ? '—' : formatBRL(c.suggested_price)}</span>
                   </div>
                   {can('write') ? (
-                    <Button size="sm" variant="outline" className="w-full" onClick={() => setEditing(c)}>
-                      <Pencil /> Alterar preço
-                    </Button>
+                    <div className="flex gap-2">
+                      {canApply(c) ? (
+                        <Button size="sm" variant="outline" className="flex-1" onClick={() => applySuggested(c)}>
+                          Aplicar sugerido
+                        </Button>
+                      ) : null}
+                      <Button size="sm" variant="outline" className="flex-1" onClick={() => setEditing({ pricing: c, suggested: false })}>
+                        <Pencil /> Alterar preço
+                      </Button>
+                    </div>
                   ) : null}
                 </li>
               ))}
@@ -134,7 +151,9 @@ export function ChannelPricingCard({ variant }: { variant: VariantRow }) {
         </Card>
       ) : null}
 
-      {editing ? <ChannelPriceDialog variant={variant} pricing={editing} unitCost={data.unit_cost} onOpenChange={(open) => !open && setEditing(null)} /> : null}
+      {editing ? (
+        <ChannelPriceDialog variant={variant} pricing={editing.pricing} useSuggested={editing.suggested} unitCost={data.unit_cost} onOpenChange={(open) => !open && setEditing(null)} />
+      ) : null}
     </div>
   );
 }
@@ -150,9 +169,22 @@ function MarginCell({ pricing, target }: { pricing: ChannelPricing; target: numb
   );
 }
 
-function ChannelPriceDialog({ variant, pricing, unitCost, onOpenChange }: { variant: VariantRow; pricing: ChannelPricing; unitCost: number | null; onOpenChange: (open: boolean) => void }) {
+function ChannelPriceDialog({
+  variant,
+  pricing,
+  unitCost,
+  useSuggested,
+  onOpenChange,
+}: {
+  variant: VariantRow;
+  pricing: ChannelPricing;
+  unitCost: number | null;
+  useSuggested?: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const { today, settings } = useMember();
-  const [price, setPrice] = useState<string | null>(pricing.price === null ? null : String(pricing.price));
+  const initial = useSuggested && pricing.suggested_price !== null ? pricing.suggested_price : pricing.price;
+  const [price, setPrice] = useState<string | null>(initial === null ? null : String(initial));
   const [validFrom, setValidFrom] = useState(today());
   const save = useSetChannelPrice(() => onOpenChange(false));
   const taxPct = settings.tax_regime === 'SIMPLES' ? settings.sales_tax_pct : 0;
@@ -178,7 +210,7 @@ function ChannelPriceDialog({ variant, pricing, unitCost, onOpenChange }: { vari
       >
         <div className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Novo preço" required>
+            <Field label="Novo preço" required hint={pricing.price !== null ? `Atual: ${formatBRL(pricing.price)}` : undefined}>
               <MoneyInput value={price} onValueChange={setPrice} autoFocus />
             </Field>
             <Field label="Vale a partir de" hint="O preço anterior fica no histórico até o dia anterior.">

@@ -25,6 +25,7 @@ import type { ExportColumn } from '@/lib/export';
 import { formatBRL, toNumber } from '@/lib/money';
 import { useRequestId } from '@/lib/use-request-id';
 import { FinanceNav } from './finance-nav';
+import { InstallmentCalendar } from './installment-calendar';
 import { PayInstallmentDialog, ReceiveInstallmentDialog } from './installment-dialogs';
 
 type Kind = 'PAGAR' | 'RECEBER';
@@ -114,6 +115,7 @@ function OpenInstallments({ kind, payer, canWrite, today }: { kind: Kind; payer:
   const [acting, setActing] = useState<InstallmentRow | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [payingMany, setPayingMany] = useState(false);
+  const [view, setView] = useState<'lista' | 'calendario'>('lista');
   const rows = useMemo(() => (query.data ?? []).filter((r) => !payer || r.payer === payer), [query.data, payer]);
   const groups = useMemo(() => groupOpen(rows, today), [rows, today]);
 
@@ -132,6 +134,28 @@ function OpenInstallments({ kind, payer, canWrite, today }: { kind: Kind; payer:
       else next.add(id);
       return next;
     });
+
+  const renderList = (list: InstallmentRow[]) => (
+    <ul className="divide-y divide-line overflow-hidden rounded-[var(--radius-card)] border border-line bg-panel">
+      {list.map((r) => (
+        <InstallmentItem
+          key={r.id}
+          row={r}
+          kind={kind}
+          selectable={pay && canWrite}
+          selected={selected.has(r.id)}
+          onToggle={() => toggle(r.id)}
+          action={
+            canWrite ? (
+              <Button size="sm" variant={r.is_overdue ? 'primary' : 'outline'} onClick={() => setActing(r)}>
+                {pay ? 'Pagar' : 'Receber'}
+              </Button>
+            ) : null
+          }
+        />
+      ))}
+    </ul>
+  );
 
   const exportColumns: ExportColumn<InstallmentRow>[] = [
     { header: 'Vencimento', value: (r) => formatDateBR(r.due_date) },
@@ -152,10 +176,26 @@ function OpenInstallments({ kind, payer, canWrite, today }: { kind: Kind; payer:
         <Stat label="Total em aberto" value={total} hint={`${rows.length} parcela(s)`} />
         {pay ? <Stat label="Parcelas do dono" value={byOwner} hint="Pagas pelo cartão/conta do dono: não saem do caixa" /> : <Stat label="Clientes com saldo" value={new Set(rows.map((r) => r.customer_id ?? r.counterparty_name)).size} format={(v) => String(v ?? 0)} />}
       </div>
-      <div className="mb-3 flex justify-end">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div role="radiogroup" aria-label="Visualização" className="inline-flex rounded-xl border border-line bg-subtle p-1">
+          {(['lista', 'calendario'] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              role="radio"
+              aria-checked={view === v}
+              onClick={() => setView(v)}
+              className={cn('h-8 rounded-lg px-3 text-sm font-medium text-muted hover:text-ink', view === v && 'bg-panel text-ink shadow-sm')}
+            >
+              {v === 'lista' ? 'Lista' : 'Calendário'}
+            </button>
+          ))}
+        </div>
         <ExportMenu rows={rows} columns={exportColumns} fileName={pay ? 'contas-a-pagar' : 'contas-a-receber'} />
       </div>
-      {groups.length === 0 ? (
+      {view === 'calendario' ? (
+        <InstallmentCalendar rows={rows} today={today} renderList={renderList} />
+      ) : groups.length === 0 ? (
         <EmptyState title={pay ? 'Nada a pagar' : 'Nada a receber'} description={pay ? 'Compras confirmadas e despesas lançadas aparecem aqui.' : 'Vendas com saldo em aberto aparecem aqui.'} />
       ) : (
         <div className="space-y-5">
@@ -167,25 +207,7 @@ function OpenInstallments({ kind, payer, canWrite, today }: { kind: Kind; payer:
                 </h2>
                 <Money value={sumMoney(group.rows.map((r) => r.amount))} className="text-sm font-semibold" />
               </div>
-              <ul className="divide-y divide-line overflow-hidden rounded-[var(--radius-card)] border border-line bg-panel">
-                {group.rows.map((r) => (
-                  <InstallmentItem
-                    key={r.id}
-                    row={r}
-                    kind={kind}
-                    selectable={pay && canWrite}
-                    selected={selected.has(r.id)}
-                    onToggle={() => toggle(r.id)}
-                    action={
-                      canWrite ? (
-                        <Button size="sm" variant={r.is_overdue ? 'primary' : 'outline'} onClick={() => setActing(r)}>
-                          {pay ? 'Pagar' : 'Receber'}
-                        </Button>
-                      ) : null
-                    }
-                  />
-                ))}
-              </ul>
+              {renderList(group.rows)}
             </section>
           ))}
         </div>

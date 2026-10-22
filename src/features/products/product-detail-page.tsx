@@ -1,4 +1,4 @@
-import { ArrowLeft, Copy, FilePlus2, Pencil, Printer } from 'lucide-react';
+import { ArrowLeft, Copy, FilePlus2, GitCompare, Pencil, Printer } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { Page, PageHeader } from '@/components/layout/page';
@@ -7,6 +7,7 @@ import { Stat } from '@/components/shared/stat';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/menu';
 import { EmptyState, ErrorState, LoadingBlock } from '@/components/ui/states';
 import {
@@ -28,6 +29,7 @@ import { cn } from '@/lib/cn';
 import { formatDateBR } from '@/lib/dates';
 import { formatCost, formatMinutes, formatNumber, formatPercent, formatQty, toNumber } from '@/lib/money';
 import { CostBreakdown, Info, ProductInitials } from './bits';
+import { CompareBomDialog } from './compare-bom-dialog';
 import { CopyBomDialog } from './copy-bom-dialog';
 import { ChannelPricingCard } from './pricing';
 
@@ -265,7 +267,7 @@ function ActiveBom({ variant, siblings }: { variant: VariantRow; siblings: Varia
       {can('costs') ? (
         <Card className="h-fit">
           <CardHeader title="Custo estimado por unidade" />
-          <div className="p-4">{estimate.isError ? <ErrorState error={estimate.error} /> : <CostBreakdown estimate={estimate.data} loading={estimate.isFetching} />}</div>
+          <div className="p-4">{estimate.isError ? <ErrorState error={estimate.error} /> : <CostBreakdown estimate={estimate.data} loading={estimate.isFetching} unitsPerPlate={variant.units_per_plate} />}</div>
         </Card>
       ) : null}
     </div>
@@ -317,25 +319,41 @@ export function BomLinesTable({ lines, unitsPerPlate }: { lines: Array<{ id: num
 function BomVersions({ variant }: { variant: VariantRow }) {
   const versions = useBomVersions(variant.id);
   const { can } = useMember();
+  const [selected, setSelected] = useState<number[]>([]);
+  const [comparing, setComparing] = useState(false);
   if (versions.isError) return <ErrorState error={versions.error} />;
   if (!versions.data) return <LoadingBlock rows={2} />;
   if (versions.data.length === 0) return <EmptyState title="Nenhuma versão" description="Cada alteração na ficha ativa cria uma nova versão; as anteriores ficam guardadas e as impressões antigas continuam com o custo da época." />;
+  const toggle = (id: number) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id].slice(-2)));
+  const pair = versions.data.filter((b) => selected.includes(b.id)).sort((x, y) => x.version - y.version);
   return (
-    <ul className="divide-y divide-line overflow-hidden rounded-[var(--radius-card)] border border-line bg-panel">
-      {versions.data.map((b) => (
-        <li key={b.id}>
-          <Link to={`/produtos/${variant.product_id}/fichas/${b.id}`} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 text-sm hover:bg-subtle">
-            <span className="w-20 font-semibold">Versão {b.version}</span>
-            <Badge tone={b.status === 'ATIVA' ? 'success' : b.status === 'RASCUNHO' ? 'accent' : 'neutral'}>{BOM_STATUS_LABELS[b.status]}</Badge>
-            <span className="min-w-0 flex-1 text-muted">
-              {b.units_per_plate} por mesa · {formatMinutes(b.est_print_minutes_per_plate)} · {formatQty(b.grams_per_unit, 'G')} por unidade
-            </span>
-            <span className="text-xs text-muted">{b.activated_at ? `ativada ${formatDateBR(b.activated_at.slice(0, 10))}` : `criada ${formatDateBR(b.created_at.slice(0, 10))}`}</span>
-            {can('write') && b.status === 'RASCUNHO' ? <span className="text-xs font-medium text-accent-ink">continuar editando →</span> : null}
-          </Link>
-        </li>
-      ))}
-    </ul>
+    <div className="space-y-3">
+      {versions.data.length > 1 ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm text-muted">Marque duas versões para comparar.</p>
+          <Button size="sm" variant="outline" disabled={pair.length !== 2} onClick={() => setComparing(true)}>
+            <GitCompare /> Comparar
+          </Button>
+        </div>
+      ) : null}
+      <ul className="divide-y divide-line overflow-hidden rounded-[var(--radius-card)] border border-line bg-panel">
+        {versions.data.map((b) => (
+          <li key={b.id} className="flex items-center gap-1 pl-3 hover:bg-subtle">
+            {versions.data.length > 1 ? <Checkbox aria-label={`Comparar versão ${b.version}`} className="size-5" checked={selected.includes(b.id)} onChange={() => toggle(b.id)} /> : null}
+            <Link to={`/produtos/${variant.product_id}/fichas/${b.id}`} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-1 px-3 py-3 text-sm">
+              <span className="w-20 font-semibold">Versão {b.version}</span>
+              <Badge tone={b.status === 'ATIVA' ? 'success' : b.status === 'RASCUNHO' ? 'accent' : 'neutral'}>{BOM_STATUS_LABELS[b.status]}</Badge>
+              <span className="min-w-0 flex-1 text-muted">
+                {b.units_per_plate} por mesa · {formatMinutes(b.est_print_minutes_per_plate)} · {formatQty(b.grams_per_unit, 'G')} por unidade
+              </span>
+              <span className="text-xs text-muted">{b.activated_at ? `ativada ${formatDateBR(b.activated_at.slice(0, 10))}` : `criada ${formatDateBR(b.created_at.slice(0, 10))}`}</span>
+              {can('write') && b.status === 'RASCUNHO' ? <span className="text-xs font-medium text-accent-ink">continuar editando →</span> : null}
+            </Link>
+          </li>
+        ))}
+      </ul>
+      {comparing && pair.length === 2 ? <CompareBomDialog a={pair[0]!} b={pair[1]!} onOpenChange={setComparing} /> : null}
+    </div>
   );
 }
 

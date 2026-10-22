@@ -342,7 +342,7 @@ function BomEditor({ variant, bom, initial }: { variant: VariantRow; bom: BomVer
           {can('costs') ? (
             <Card>
               <CardHeader title="Custo estimado por unidade" description="Recalcula enquanto você edita." />
-              <div className="p-4">{preview.isError ? <ErrorState error={preview.error} /> : <CostBreakdown estimate={preview.data} loading={preview.isFetching} />}</div>
+              <div className="p-4">{preview.isError ? <ErrorState error={preview.error} /> : <CostBreakdown estimate={preview.data} loading={preview.isFetching} unitsPerPlate={state.units_per_plate} />}</div>
             </Card>
           ) : null}
           {editable ? (
