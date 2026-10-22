@@ -125,3 +125,34 @@ describe('Visão geral (US-8.1)', () => {
     expect(audit).toHaveLength(2);
   });
 });
+
+describe('Fluxo de caixa realizado (US-7.10)', () => {
+  interface Flow {
+    opening: number;
+    opened_in_period: number;
+    closing: number;
+    buckets: Array<{ inflows: number; outflows: number }>;
+  }
+
+  it('saldo no fim bate com o saldo das contas, inclusive conta aberta no período', async () => {
+    const d = await today();
+    const wallet = await env.as(dono, (s) =>
+      s.rpc<number>('save_payment_account', { p_account: { name: 'Carteira', kind: 'DINHEIRO', owner: 'EMPRESA', opening_balance: 50, opening_date: d } }),
+    );
+    await env.as(dono, (s) => s.rpc('transfer_between_accounts', { p_request_id: rid(), p_from_account_id: bank, p_to_account_id: wallet, p_amount: 20, p_occurred_on: d }));
+    const balances = await env.as(dono, (s) => s.query<{ id: number; balance: string }>(`select id, balance from public.v_payment_accounts where owner = 'EMPRESA'`));
+    const total = balances.reduce((sum, b) => sum + n(b.balance), 0);
+
+    const all = await env.as(dono, (s) => s.rpc<Flow>('cash_flow', { p_from: `${d.slice(0, 4)}-01-01`, p_to: d, p_grain: 'month' }));
+    expect(n(all.closing)).toBeCloseTo(total, 2);
+    expect(n(all.opened_in_period)).toBe(150);
+
+    // Só a carteira: o saldo inicial de 50 entra como conta aberta no período e a transferência como entrada.
+    const one = await env.as(dono, (s) => s.rpc<Flow>('cash_flow', { p_from: `${d.slice(0, 7)}-01`, p_to: d, p_account_id: wallet }));
+    expect(n(one.opening)).toBe(0);
+    expect(n(one.opened_in_period)).toBe(50);
+    expect(n(one.buckets[0]!.inflows)).toBe(20);
+    expect(n(one.closing)).toBe(70);
+    expect(n(balances.find((b) => b.id === wallet)!.balance)).toBe(70);
+  });
+});

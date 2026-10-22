@@ -298,3 +298,58 @@ describe('cancelamento e marketplace', () => {
     expect(await sumCode('3.1', 'delivery')).toBe(-5);
   });
 });
+
+describe('correções de 22/10 (embalagem por pedido, crédito sem cliente, divisão da taxa)', () => {
+  it('entrega sem embalagens informadas aplica a embalagem padrão por pedido uma única vez', async () => {
+    await env.as(dono, (s) => s.rpc('save_settings', { p_settings: { default_order_packaging_item_id: saquinho } }));
+    await env.as(dono, (s) => s.rpc('adjust_stock', { p_request_id: rid(), p_item_id: abelhaItem, p_counted_qty: 10, p_reason: 'Contagem', p_confirm_large: true }));
+    const created = await env.as(dono, (s) =>
+      s.rpc<{ order_id: number }>('create_order', {
+        p_request_id: rid(),
+        p_order: { kind: 'PRONTA_ENTREGA', channel_id: direct, confirm: true, lines: [{ variant_id: abelha, qty: 2, unit_price: 5 }] },
+      }),
+    );
+    const line = await env.admin().one<{ id: number }>(`select id from public.sales_order_lines where order_id = $1`, [created.order_id]);
+    const packaging = () =>
+      env.admin().query<{ item_id: number; qty: string }>(`select item_id, qty from public.order_packaging where order_id = $1`, [created.order_id]);
+    // Abelha não tem embalagem na ficha: só a embalagem por pedido entra.
+    await env.as(dono, (s) => s.rpc('deliver_order', { p_request_id: rid(), p_order_id: created.order_id, p_delivery: { lines: [{ line_id: line.id, qty: 1 }] } }));
+    expect((await packaging()).map((p) => [p.item_id, n(p.qty)])).toEqual([[saquinho, 1]]);
+    await env.as(dono, (s) => s.rpc('deliver_order', { p_request_id: rid(), p_order_id: created.order_id, p_delivery: {} }));
+    expect((await packaging()).map((p) => [p.item_id, n(p.qty)])).toEqual([[saquinho, 1]]);
+    await env.as(dono, (s) => s.rpc('save_settings', { p_settings: { default_order_packaging_item_id: '' } }));
+  });
+
+  it('sinal recebido de pedido sem cliente não pode virar crédito', async () => {
+    const created = await env.as(dono, (s) =>
+      s.rpc<{ order_id: number }>('create_order', {
+        p_request_id: rid(),
+        p_order: {
+          kind: 'ENCOMENDA', channel_id: direct, confirm: true, lines: [{ variant_id: coracao, qty: 2, unit_price: 4 }],
+          payment_terms: [{ label: 'Sinal', pct: 0.5, due_date: '2026-10-21' }, { label: 'Na entrega', due_date: '2026-11-10' }],
+        },
+      }),
+    );
+    const first = await env.admin().one<{ id: number }>(
+      `select i.id from public.installments i join public.sales_orders o on o.receivable_id = i.receivable_id where o.id = $1 and i.number = 1`,
+      [created.order_id],
+    );
+    await env.as(dono, (s) => s.rpc('receive_installment', { p_request_id: rid(), p_installment_id: first.id, p_received_on: '2026-10-21', p_account_id: bank }));
+    await expect(
+      env.as(dono, (s) => s.rpc('cancel_order', { p_request_id: rid(), p_order_id: created.order_id, p_reason: 'Desistiu', p_deposit_action: 'CREDIT' })),
+    ).rejects.toThrow(/sem cliente/);
+    const refund = await env.as(dono, (s) =>
+      s.rpc<{ refund_payable_id: number; deposit: number }>('cancel_order', { p_request_id: rid(), p_order_id: created.order_id, p_reason: 'Desistiu', p_deposit_action: 'REFUND' }),
+    );
+    expect(n(refund.deposit)).toBe(4);
+    expect(refund.refund_payable_id).toBeTruthy();
+    const o = await order(created.order_id);
+    expect(o.canceled_at).toBeTruthy();
+  });
+
+  it('dividir a taxa combinada na mesma data em que ela começa é bloqueado', async () => {
+    await expect(
+      env.as(dono, (s) => s.rpc('split_operational_rate', { p_valid_from: '2026-01-01', p_energy_h: 0.5, p_depreciation_h: 0.7 })),
+    ).rejects.toThrow(/precisa começar depois/);
+  });
+});
