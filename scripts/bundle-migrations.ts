@@ -3,8 +3,8 @@ import { join } from 'node:path';
 
 /**
  * Junta todas as migrations, em ordem, num único arquivo para colar no SQL Editor
- * do Supabase num projeto NOVO (primeira instalação). Para atualizações, use a
- * Supabase CLI (`supabase db push`), que aplica só o que falta.
+ * do Supabase num projeto NOVO (primeira instalação). Para atualizações, use
+ * `npm run db:migrate`, que aplica só o que falta.
  *   npm run sql:bundle  →  supabase/.bundle/instalacao-completa.sql
  */
 const dir = join(process.cwd(), 'supabase', 'migrations');

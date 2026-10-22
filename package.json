@@ -25,7 +25,6 @@
     "local:add-user": "tsx scripts/local-add-user.ts",
     "icons": "pwa-assets-generator",
     "check": "npm run typecheck && npm run lint && npm run test && npm run build",
-    "provision": "tsx scripts/provision-users.ts",
     "backup:db": "bash scripts/backup-db.sh",
     "sql:bundle": "tsx scripts/bundle-migrations.ts",
     "db:migrate": "tsx scripts/db-migrate.ts",

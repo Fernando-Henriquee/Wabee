@@ -18,8 +18,7 @@ file="backups/wabee-$(date +%Y-%m-%d_%H%M).sql.gz"
 
 # Somente dados do schema public: a estrutura vem das migrations versionadas.
 # Não usar --table junto com --schema: o pg_dump exportaria só a tabela indicada.
-# Membros e perfis dependem das contas do Auth (fora do dump) e são recriados no provisionamento.
-# Mesmos parâmetros validados em tests/db/backup.test.ts.
+# Membros e perfis dependem das contas do Auth (fora do dump): recrie-os com npm run member:add.
 {
   echo "-- Restaure com: gunzip -c ARQUIVO | psql \"\$TARGET_DB_URL\" --single-transaction -v ON_ERROR_STOP=1"
   echo "SET session_replication_role = replica;"
