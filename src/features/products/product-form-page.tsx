@@ -186,7 +186,7 @@ function ProductForm({ productId, initial }: { productId?: number; initial: Form
         <Section title="Variações" description="Cor, tamanho ou acabamento. O preço de referência vale quando o canal não tem preço próprio.">
           <ul className="space-y-3">
             {form.variants.map((v, index) => (
-              <li key={v.key} className="grid grid-cols-2 gap-3 rounded-lg border border-line p-3 sm:grid-cols-[1fr_10rem_9rem_auto] sm:items-end">
+              <li key={v.key} className="grid grid-cols-2 gap-3 rounded-lg border border-line p-3 sm:grid-cols-[1fr_10rem_9rem_auto] sm:items-start">
                 <Field label={`Variação ${index + 1}`} required className="col-span-2 sm:col-span-1">
                   <Input value={v.name} onChange={(e) => setVariant(v.key, { name: e.target.value })} maxLength={60} placeholder="Ex.: amarelo" />
                 </Field>
@@ -196,7 +196,7 @@ function ProductForm({ productId, initial }: { productId?: number; initial: Form
                 <Field label="Preço de referência">
                   <MoneyInput value={v.reference_price} onValueChange={(value) => setVariant(v.key, { reference_price: value })} />
                 </Field>
-                <div className="col-span-2 flex items-center justify-between gap-2 sm:col-span-1 sm:pb-1">
+                <div className="col-span-2 flex items-center justify-between gap-2 sm:col-span-1 sm:pt-8">
                   {v.id ? (
                     <label className="inline-flex items-center gap-2 text-sm">
                       <Checkbox checked={v.active} onChange={(e) => setVariant(v.key, { active: e.target.checked })} /> Ativa

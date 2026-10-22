@@ -28,7 +28,7 @@ export function Info({ label, value }: { label: string; value: ReactNode }) {
 }
 
 /** Duração em horas e minutos (o banco guarda minutos). */
-export function DurationInput({ value, onChange, ...rest }: { value: number; onChange: (minutes: number) => void; id?: string; 'aria-describedby'?: string }) {
+export function DurationInput({ value, onChange, disabled, ...rest }: { value: number; onChange: (minutes: number) => void; disabled?: boolean; id?: string; 'aria-describedby'?: string }) {
   const props = useFieldControl(rest);
   const hours = Math.floor(value / 60);
   const minutes = value % 60;
@@ -36,11 +36,11 @@ export function DurationInput({ value, onChange, ...rest }: { value: number; onC
   return (
     <div className="flex items-center gap-2" role="group" aria-describedby={props['aria-describedby']}>
       <div className="relative w-24">
-        <Input id={props.id} inputMode="numeric" className="num pr-7 text-right" value={hours || ''} placeholder="0" onChange={(e) => onChange(clamp(e.target.value, 999) * 60 + minutes)} aria-label="Horas" />
+        <Input id={props.id} disabled={disabled} inputMode="numeric" className="num pr-7 text-right" value={hours || ''} placeholder="0" onChange={(e) => onChange(clamp(e.target.value, 999) * 60 + minutes)} aria-label="Horas" />
         <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted">h</span>
       </div>
       <div className="relative w-24">
-        <Input inputMode="numeric" className="num pr-10 text-right" value={minutes || ''} placeholder="0" onChange={(e) => onChange(hours * 60 + clamp(e.target.value, 59))} aria-label="Minutos" />
+        <Input disabled={disabled} inputMode="numeric" className="num pr-10 text-right" value={minutes || ''} placeholder="0" onChange={(e) => onChange(hours * 60 + clamp(e.target.value, 59))} aria-label="Minutos" />
         <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted">min</span>
       </div>
     </div>

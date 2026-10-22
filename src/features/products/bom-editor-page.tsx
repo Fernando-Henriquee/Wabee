@@ -4,7 +4,6 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { Page, PageHeader } from '@/components/layout/page';
 import { EntityPicker } from '@/components/shared/entity-picker';
 import { ColorDot } from '@/components/shared/item-bits';
-import { Money } from '@/components/shared/money';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader } from '@/components/ui/card';
@@ -39,7 +38,7 @@ import { useMember } from '@/features/member/member-context';
 import { cn } from '@/lib/cn';
 import { describeError } from '@/lib/errors';
 import { formatQty, toNumber, unitLabel } from '@/lib/money';
-import { CostBreakdown, DurationInput } from './bits';
+import { CostBreakdown, DurationInput, UnitCost } from './bits';
 
 interface LineDraft {
   key: string;
@@ -276,10 +275,10 @@ function BomEditor({ variant, bom, initial }: { variant: VariantRow; bom: BomVer
                 />
               </Field>
               <Field label="Tempo de impressão da mesa" required>
-                <DurationInput value={state.minutes} onChange={(m) => editable && set('minutes', m)} />
+                <DurationInput value={state.minutes} disabled={!editable} onChange={(m) => set('minutes', m)} />
               </Field>
               <Field label="Acabamento por peça" hint="Lixar, pintar, montar. Zero = vai direto ao estoque ao finalizar.">
-                <DurationInput value={state.post_minutes} onChange={(m) => editable && set('post_minutes', m)} />
+                <DurationInput value={state.post_minutes} disabled={!editable} onChange={(m) => set('post_minutes', m)} />
               </Field>
               <Field label="Impressora padrão">
                 <Select value={state.equipment_id} disabled={!editable} onChange={(e) => set('equipment_id', e.target.value)}>
@@ -424,7 +423,7 @@ function LineRow({
           <span className="truncate text-sm font-medium">{line.item_name}</span>
         </span>
         <span className="inline-flex items-center gap-2">
-          {cost !== undefined ? <Money value={cost} cost className="text-sm text-muted" /> : null}
+          {cost !== undefined ? <UnitCost value={cost} className="text-sm text-muted" /> : null}
           {editable ? (
             <Button variant="ghost" size="icon-sm" aria-label={`Remover ${line.item_name}`} onClick={onRemove}>
               <Trash2 />

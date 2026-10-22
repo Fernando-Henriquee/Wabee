@@ -116,6 +116,7 @@ export function ProductDetailPage() {
 function VariantPanel({ variant, siblings }: { variant: VariantRow; siblings: VariantRow[] }) {
   const { can } = useMember();
   const showCosts = can('costs');
+  const hasStock = toNumber(variant.qty_on_hand) > 0 && toNumber(variant.avg_cost_total) > 0;
   return (
     <>
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -128,7 +129,14 @@ function VariantPanel({ variant, siblings }: { variant: VariantRow; siblings: Va
         <Stat label="No acabamento" value={variant.qty_in_finishing} format={(v) => formatQty(v, 'UN')} hint="Impressas, aguardando liberação" />
         {showCosts ? (
           <>
-            <Stat label="Custo médio em estoque" value={variant.avg_cost_total} format={(v) => formatCost(v, 4)} estimated={variant.avg_cost_total !== null} estimatedHint="Inclui energia/depreciação estimadas" />
+            <Stat
+              label="Custo médio em estoque"
+              value={hasStock ? variant.avg_cost_total : null}
+              format={(v) => formatCost(v, 4)}
+              estimated={hasStock}
+              estimatedHint="Inclui energia/depreciação estimadas"
+              hint={hasStock ? undefined : 'Sem estoque: veja o custo estimado pela ficha'}
+            />
             <Stat label="Preço de referência" value={variant.reference_price} hint="Usado quando o canal não tem preço próprio" />
           </>
         ) : null}
@@ -218,7 +226,7 @@ function ActiveBom({ variant, siblings }: { variant: VariantRow; siblings: Varia
   }
 
   return (
-    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[1fr_22rem]">
+    <div className={cn('grid grid-cols-1 items-start gap-4', can('costs') && 'lg:grid-cols-[1fr_22rem]')}>
       <Card>
         <CardHeader
           title={`Versão ${variant.active_bom_version} (ativa)`}
