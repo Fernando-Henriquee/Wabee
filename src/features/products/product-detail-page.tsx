@@ -2,6 +2,7 @@ import { ArrowLeft, Copy, FilePlus2, GitCompare, Pencil, Printer } from 'lucide-
 import { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { Page, PageHeader } from '@/components/layout/page';
+import { DocumentHistory } from '@/components/shared/document-history';
 import { ColorDot, Qty } from '@/components/shared/item-bits';
 import { Stat } from '@/components/shared/stat';
 import { Badge } from '@/components/ui/badge';
@@ -148,6 +149,7 @@ function VariantPanel({ variant, siblings }: { variant: VariantRow; siblings: Va
           <TabsTrigger value="bom">Ficha técnica</TabsTrigger>
           {showCosts ? <TabsTrigger value="prices">Preços por canal</TabsTrigger> : null}
           <TabsTrigger value="versions">Versões da ficha</TabsTrigger>
+          {can('audit') ? <TabsTrigger value="history">Histórico</TabsTrigger> : null}
         </TabsList>
         <TabsContent value="bom">
           <ActiveBom variant={variant} siblings={siblings} />
@@ -159,6 +161,9 @@ function VariantPanel({ variant, siblings }: { variant: VariantRow; siblings: Va
         ) : null}
         <TabsContent value="versions">
           <BomVersions variant={variant} />
+        </TabsContent>
+        <TabsContent value="history">
+          <VariantHistory variant={variant} />
         </TabsContent>
       </Tabs>
     </>
@@ -357,3 +362,16 @@ function BomVersions({ variant }: { variant: VariantRow }) {
   );
 }
 
+function VariantHistory({ variant }: { variant: VariantRow }) {
+  const versions = useBomVersions(variant.id);
+  return (
+    <DocumentHistory
+      mainModel="product_variant"
+      refs={[
+        { model: 'product', ids: [variant.product_id] },
+        { model: 'product_variant', ids: [variant.id] },
+        { model: 'bom_version', ids: (versions.data ?? []).map((b) => b.id) },
+      ]}
+    />
+  );
+}

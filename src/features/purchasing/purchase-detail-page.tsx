@@ -2,6 +2,7 @@ import { ArrowLeft, Ban, CheckCheck, PackageCheck, Pencil, Trash2 } from 'lucide
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { Page, PageHeader } from '@/components/layout/page';
+import { DocumentHistory } from '@/components/shared/document-history';
 import { ReasonDialog } from '@/components/shared/reason-dialog';
 import { Stat } from '@/components/shared/stat';
 import { Badge } from '@/components/ui/badge';
@@ -269,6 +270,7 @@ function PurchaseDetail({ purchase, lines }: { purchase: PurchaseRow; lines: Pur
           <TabsTrigger value="lines">Itens ({lines.length})</TabsTrigger>
           <TabsTrigger value="installments">Parcelas{draft ? '' : ` (${purchase.installments_total_count})`}</TabsTrigger>
           <TabsTrigger value="receipts">Recebimentos{receipts.data ? ` (${receipts.data.length})` : ''}</TabsTrigger>
+          {can('audit') ? <TabsTrigger value="history">Histórico</TabsTrigger> : null}
         </TabsList>
         <TabsContent value="lines">
           <LinesPanel purchase={purchase} lines={lines} />
@@ -279,6 +281,17 @@ function PurchaseDetail({ purchase, lines }: { purchase: PurchaseRow; lines: Pur
         </TabsContent>
         <TabsContent value="receipts">
           <ReceiptsPanel receipts={receipts.data} lines={lines} error={receipts.error} />
+        </TabsContent>
+        <TabsContent value="history">
+          <DocumentHistory
+            mainModel="purchase"
+            refs={[
+              { model: 'purchase', ids: [purchase.id] },
+              { model: 'payable', ids: [purchase.payable_id] },
+              { model: 'receipt', ids: (receipts.data ?? []).map((r) => r.id) },
+              { model: 'installment', ids: (installments.data ?? []).map((i) => i.id) },
+            ]}
+          />
         </TabsContent>
       </Tabs>
 

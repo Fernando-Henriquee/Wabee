@@ -3,6 +3,7 @@ import { type ReactNode, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { toast } from 'sonner';
 import { Page, PageHeader } from '@/components/layout/page';
+import { DocumentHistory } from '@/components/shared/document-history';
 import { Money } from '@/components/shared/money';
 import { ReasonDialog } from '@/components/shared/reason-dialog';
 import { Stat } from '@/components/shared/stat';
@@ -443,6 +444,15 @@ function OrderDetail({ order }: { order: SalesOrderRow }) {
         confirmLabel="Estornar baixa"
         onConfirm={(reason) => (dialog?.kind === 'reverse' ? reverse.mutateAsync({ installmentId: dialog.installment.id, reason }) : Promise.resolve())}
       />
+      <div className="mt-6">
+        <DocumentHistory
+          mainModel="sales_order"
+          refs={[
+            { model: 'sales_order', ids: [order.id] },
+            { model: 'installment', ids: (installments.data ?? []).map((i) => i.id) },
+          ]}
+        />
+      </div>
     </Page>
   );
 }

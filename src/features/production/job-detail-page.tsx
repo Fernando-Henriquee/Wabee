@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { LayerBar } from '@/components/charts/chart';
 import { Page, PageHeader } from '@/components/layout/page';
+import { DocumentHistory } from '@/components/shared/document-history';
 import { ColorDot } from '@/components/shared/item-bits';
 import { Money } from '@/components/shared/money';
 import { ReasonDialog } from '@/components/shared/reason-dialog';
@@ -383,6 +384,9 @@ function JobDetail({ job }: { job: PrintJobRow }) {
         onConfirm={(reason) => reverse.mutateAsync({ requestId: reverseId, jobId: job.id, reason })}
       />
       {finishing ? <FinishingDialog output={finishing} open onOpenChange={(o) => !o && setFinishing(null)} /> : null}
+      <div className="mt-6">
+        <DocumentHistory mainModel="print_job" refs={[{ model: 'print_job', ids: [job.id] }, { model: 'print_job_output', ids: (outputs.data ?? []).map((o) => o.id) }]} />
+      </div>
     </Page>
   );
 }
