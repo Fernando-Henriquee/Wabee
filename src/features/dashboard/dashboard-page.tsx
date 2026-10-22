@@ -26,6 +26,7 @@ import { useMember } from '@/features/member/member-context';
 import { cn } from '@/lib/cn';
 import { diffInDays, formatDateBR, formatDateTimeBR } from '@/lib/dates';
 import { formatBRL, formatMinutes, formatNumber, formatPercent, toNumber } from '@/lib/money';
+import { pendingStepsFromState } from '@/features/onboarding/onboarding-logic';
 
 const MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
@@ -80,20 +81,35 @@ function Alerts() {
 
 function OnboardingCallout() {
   const { settings, can } = useMember();
-  if (!can('settings') || settings.onboarding_state?.done) return null;
+  const state = settings.onboarding_state;
+  const pending = pendingStepsFromState(state);
+  if (!can('settings') || (state?.done && pending.length === 0)) return null;
+  const started = Boolean(state?.done || state?.step);
   return (
     <Card className="mb-5 overflow-hidden">
       <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
         <div aria-hidden className="hidden size-14 shrink-0 rounded-2xl honey-stripes sm:block" />
         <div className="min-w-0 flex-1">
-          <h2 className="text-base">Vamos configurar a Wabee</h2>
-          <p className="mt-1 text-sm text-muted">
-            Um passo a passo curto: contas, impressora, taxa operacional, filamentos e componentes que você já tem, compras já feitas e canais de venda.
-          </p>
+          <h2 className="text-base">{started ? 'Configuração inicial pendente' : 'Vamos configurar a Wabee'}</h2>
+          {started ? (
+            <ul className="mt-1 flex flex-wrap gap-1.5" aria-label="Passos pendentes">
+              {pending.map((step) => (
+                <li key={step.key}>
+                  <Link to={`/inicio/assistente?passo=${step.key}`} className="inline-flex rounded-full border border-line-strong bg-panel px-2.5 py-1 text-xs font-medium hover:bg-subtle">
+                    {step.title}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-1 text-sm text-muted">
+              Um passo a passo curto: contas, impressora, taxa operacional, filamentos e componentes que você já tem, compras já feitas e canais de venda.
+            </p>
+          )}
         </div>
         <Button asChild variant="accent">
           <Link to="/inicio/assistente">
-            <Sparkles /> Começar
+            <Sparkles /> {started ? 'Continuar' : 'Começar'}
           </Link>
         </Button>
       </div>
