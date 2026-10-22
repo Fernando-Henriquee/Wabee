@@ -94,6 +94,8 @@ export function ConfirmDialog({ open, onOpenChange, title, description, confirmL
                 try {
                   await onConfirm();
                   onOpenChange(false);
+                } catch {
+                  // O erro já foi mostrado (toast da escrita); o diálogo fica aberto para corrigir.
                 } finally {
                   setBusy(false);
                 }
