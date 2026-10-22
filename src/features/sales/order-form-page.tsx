@@ -244,7 +244,7 @@ function OrderForm({ orderId, number, initial, reason }: { orderId?: number; num
     lines.map((l) => ({ bomId: l.product?.bomId, qty: l.line.qty })),
     bomLines.data,
     settings.default_order_packaging_item_id,
-    true,
+    lines.length > 0,
   );
   const packCost = [...packDefaults].reduce((sum, [itemId, qty]) => sum + toNumber(qty) * toNumber(packagingItems.items.get(itemId)?.avgCost), 0);
 
@@ -550,7 +550,7 @@ function OrderForm({ orderId, number, initial, reason }: { orderId?: number; num
                           )}
                         </>
                       )}
-                      <Field label="Vencimento" hint={t.dueDate ? undefined : 'Na entrega'}>
+                      <Field label={t.dueDate ? 'Vencimento' : 'Vencimento (na entrega)'}>
                         <Input type="date" value={t.dueDate} onChange={(e) => updateTerm(t.uid, { dueDate: e.target.value })} />
                       </Field>
                       <div className="flex h-10 items-center justify-end gap-1">

@@ -50,20 +50,20 @@ export function BoardPage() {
         description="Planeje as mesas, acompanhe a impressora e registre o que saiu."
         actions={
           <>
-            <Button asChild variant="outline">
+            <Button asChild variant="outline" className="h-9 sm:h-10">
               <Link to="/producao/equipamentos">
                 <Cpu /> Equipamentos
               </Link>
             </Button>
             {can('costs') ? (
-              <Button asChild variant="outline">
+              <Button asChild variant="outline" className="h-9 sm:h-10">
                 <Link to="/producao/taxas">
                   <Gauge /> Taxas
                 </Link>
               </Button>
             ) : null}
             {can('production') ? (
-              <Button asChild>
+              <Button asChild className="order-first h-11 w-full sm:order-none sm:h-10 sm:w-auto">
                 <Link to="/producao/impressoes/nova">
                   <Plus /> Nova impressão
                 </Link>
@@ -123,10 +123,11 @@ function Board() {
   if (jobs.isError) return <ErrorState error={jobs.error} onRetry={() => void jobs.refetch()} />;
   if (!jobs.data) return <LoadingBlock />;
 
-  const sections: Array<{ key: SectionKey; label: string; count: number; content: ReactNode }> = [
+  const sections: Array<{ key: SectionKey; label: string; short: string; count: number; content: ReactNode }> = [
     {
       key: 'PLANEJADA',
       label: 'Planejadas',
+      short: 'Planejadas',
       count: planned.length,
       content:
         planned.length === 0 ? (
@@ -168,6 +169,7 @@ function Board() {
     {
       key: 'IMPRIMINDO',
       label: 'Imprimindo',
+      short: 'Imprimindo',
       count: printing.length,
       content:
         printing.length === 0 ? (
@@ -212,6 +214,7 @@ function Board() {
     {
       key: 'ACABAMENTO',
       label: 'Aguardando acabamento',
+      short: 'Acabamento',
       count: queue.length,
       content: !finishing.data ? (
         <Skeleton className="h-24" />
@@ -248,6 +251,7 @@ function Board() {
     {
       key: 'HOJE',
       label: 'Concluídas hoje',
+      short: 'Hoje',
       count: done.length,
       content:
         done.length === 0 ? (
@@ -297,7 +301,7 @@ function Board() {
               selected === s.key ? 'border-ink bg-ink text-brand-fg' : 'border-line-strong bg-panel text-ink-soft',
             )}
           >
-            {s.label}
+            {s.short}
             <span className={cn('num rounded-full px-1.5 text-xs', selected === s.key ? 'bg-brand-fg/20' : 'bg-subtle')}>{s.count}</span>
           </button>
         ))}
@@ -392,7 +396,8 @@ function History() {
     else updated.set('filtro', key);
     setParams(updated, { replace: true });
   };
-  const totals = rows.reduce(
+  // Totais só do que valeu: estornadas e canceladas não contam.
+  const totals = rows.filter((r) => r.status === 'CONCLUIDA' || r.status === 'FALHOU').reduce(
     (acc, r) => ({ good: acc.good + r.qty_good, failed: acc.failed + r.qty_failed, minutes: acc.minutes + toNumber(r.actual_minutes), cost: acc.cost + toNumber(r.cost_total), scrap: acc.scrap + toNumber(r.cost_scrap) }),
     { good: 0, failed: 0, minutes: 0, cost: 0, scrap: 0 },
   );

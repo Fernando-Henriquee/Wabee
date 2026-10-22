@@ -450,10 +450,10 @@ function PlanForm() {
 
               {error ? <Notice tone="danger">{error}</Notice> : null}
               <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
-                <Button size="lg" className="sm:flex-1" onClick={() => submit(true)} loading={saving && start.isPending} disabled={saving || Boolean(busy)}>
+                <Button size="lg" className="sm:flex-1 lg:flex-none" onClick={() => submit(true)} loading={saving && start.isPending} disabled={saving || Boolean(busy)}>
                   <Play /> Salvar e iniciar agora
                 </Button>
-                <Button size="lg" variant="outline" className="sm:flex-1" onClick={() => submit(false)} loading={plan.isPending && !start.isPending} disabled={saving}>
+                <Button size="lg" variant="outline" className="sm:flex-1 lg:flex-none" onClick={() => submit(false)} loading={plan.isPending && !start.isPending} disabled={saving}>
                   <Save /> Salvar como planejada
                 </Button>
               </div>

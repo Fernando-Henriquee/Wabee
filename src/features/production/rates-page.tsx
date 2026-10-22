@@ -256,18 +256,8 @@ function RateTimeline({ type, rows, onNew }: { type: RateType; rows: CostRateRow
   const current = rows.find((r) => r.is_current);
   return (
     <Card>
-      <CardHeader
-        title={RATE_TYPE_LABELS[type]}
-        description={RATE_HINTS[type]}
-        actions={
-          onNew ? (
-            <Button size="sm" variant="ghost" onClick={onNew}>
-              <Plus /> Nova vigência
-            </Button>
-          ) : undefined
-        }
-      />
-      <div className="p-4">
+      <CardHeader title={RATE_TYPE_LABELS[type]} description={RATE_HINTS[type]} />
+      <div className="space-y-3 p-4">
         {rows.length === 0 ? (
           <p className="text-sm text-muted">Sem taxa cadastrada.</p>
         ) : (
@@ -300,6 +290,11 @@ function RateTimeline({ type, rows, onNew }: { type: RateType; rows: CostRateRow
             ))}
           </ol>
         )}
+        {onNew ? (
+          <Button size="sm" variant="ghost" className="-ml-2" onClick={onNew}>
+            <Plus /> Nova vigência
+          </Button>
+        ) : null}
       </div>
     </Card>
   );

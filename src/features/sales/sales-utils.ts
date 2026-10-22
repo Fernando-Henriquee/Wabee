@@ -90,6 +90,7 @@ export function initials(name: string): string {
     .split(/\s+/)
     .filter((w) => w.length > 1 && !/^(de|da|do|das|dos|e)$/i.test(w));
   const picked = words.length > 1 && /^chaveiros?$/i.test(words[0]!) ? words.slice(1) : words;
+  if (picked.length === 1) return picked[0]!.slice(0, 2).toUpperCase();
   return (picked.slice(0, 2).map((w) => w.charAt(0)).join('') || name.slice(0, 2)).toUpperCase();
 }
 

@@ -341,16 +341,16 @@ export function OrdersPage() {
                   {o.customer_name ?? 'Sem cliente'} <span className="text-muted">· {o.channel_name}</span>
                 </p>
                 <p className="truncate text-xs text-muted">{o.lines_summary}</p>
-                <div className="flex items-end justify-between gap-2 pt-0.5">
-                  <span className="text-xs text-muted">
+                <div className="flex items-end justify-between gap-3 pt-0.5">
+                  <span className="min-w-0 text-xs text-muted">
                     {formatDateBR(refDate(o))}
                     {o.due_date && o.status !== 'ENTREGUE' && o.status !== 'CANCELADO' ? ` · prazo ${formatDateBR(o.due_date)}` : ''}
                     {o.kind === 'ENCOMENDA' ? ' · encomenda' : ''}
                   </span>
-                  <span className="text-right">
+                  <span className="shrink-0 text-right">
                     <Money value={o.total} className="block text-sm font-semibold" />
                     {toNumber(o.open_amount) > 0 && o.status !== 'CANCELADO' ? (
-                      <span className={cn('text-xs', toNumber(o.overdue_amount) > 0 ? 'font-medium text-danger' : 'text-muted')}>a receber {formatBRL(o.open_amount)}</span>
+                      <span className={cn('whitespace-nowrap text-xs', toNumber(o.overdue_amount) > 0 ? 'font-medium text-danger' : 'text-muted')}>a receber {formatBRL(o.open_amount)}</span>
                     ) : null}
                   </span>
                 </div>

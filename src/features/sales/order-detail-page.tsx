@@ -487,9 +487,11 @@ function LineRow({
       {showStock && line.item_id ? (
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <span className="inline-flex flex-wrap gap-1">
-            <Badge tone={toNumber(line.qty_reserved) > 0 ? 'info' : 'neutral'}>
-              <Lock className="size-3" /> {formatNumber(line.qty_reserved)} reservada(s)
-            </Badge>
+            {active ? (
+              <Badge tone={toNumber(line.qty_reserved) > 0 ? 'info' : 'neutral'}>
+                <Lock className="size-3" /> {formatNumber(line.qty_reserved)} reservada(s)
+              </Badge>
+            ) : null}
             <Badge tone={toNumber(line.qty_delivered) > 0 ? 'success' : 'neutral'}>{formatNumber(line.qty_delivered)} entregue(s)</Badge>
             {pending > 0 ? <Badge tone="warning">{formatNumber(pending)} pendente(s)</Badge> : null}
             {active ? <Badge>{formatNumber(free)} livre(s) no estoque</Badge> : null}

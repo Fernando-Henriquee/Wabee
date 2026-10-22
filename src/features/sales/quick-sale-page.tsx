@@ -82,7 +82,7 @@ function QuickSale() {
   const companyAccounts = (accounts.data ?? []).filter((a) => a.owner === 'EMPRESA' && a.kind !== 'CARTAO_CREDITO');
   const accountValue: AccountChoice =
     account === 'RECEBER' ? 'RECEBER' : (companyAccounts.find((a) => a.id === account)?.id ?? companyAccounts[0]?.id ?? 'RECEBER');
-  const accountName = accountValue === 'RECEBER' ? 'Fica a receber' : companyAccounts.find((a) => a.id === accountValue)?.name;
+  const accountName = accountValue === 'RECEBER' ? 'A receber' : companyAccounts.find((a) => a.id === accountValue)?.name;
   const pricing = useChannelPricing(channel?.id, on);
   const taxPct = settings.tax_regime === 'SIMPLES' ? settings.sales_tax_pct : 0;
 
@@ -107,7 +107,7 @@ function QuickSale() {
     lines.map((l) => ({ bomId: l.product.bomId, qty: l.entry.qty })),
     bomLines.data,
     settings.default_order_packaging_item_id,
-    true,
+    lines.length > 0,
   );
   const packRows = effectivePackaging(packDefaults, pack);
   const packCost = packagingCost(packRows, packagingItems.items);
@@ -246,7 +246,7 @@ function QuickSale() {
           const hint = (e as { hint?: string }).hint;
           if (hint === 'transformar_em_encomenda') {
             setCartOpen(false);
-            setConvertReason(describeError(e));
+            setConvertReason(describeError(e).replace(/\s*Transforme a venda em encomenda\.?/, ''));
           } else {
             setError(describeError(e));
             toast.error(describeError(e));
@@ -289,7 +289,7 @@ function QuickSale() {
           accountValue === 'RECEBER' ? 'border-ink bg-ink text-brand-fg' : 'border-dashed border-line-strong bg-panel text-ink-soft',
         )}
       >
-        Fica a receber
+        A receber
       </button>
     </div>
   );

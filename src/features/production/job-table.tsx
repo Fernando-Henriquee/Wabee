@@ -14,6 +14,7 @@ export function useHistoryColumns(showCosts: boolean, timeZone: string, showPrin
       {
         key: 'code',
         header: 'Impressão',
+        className: 'whitespace-nowrap',
         sortValue: (r) => r.code,
         cell: (r) => (
           <span>
@@ -29,6 +30,7 @@ export function useHistoryColumns(showCosts: boolean, timeZone: string, showPrin
         key: 'good',
         header: 'Boas / falhas',
         align: 'right',
+        className: 'whitespace-nowrap',
         sortValue: (r) => r.qty_good,
         cell: (r) =>
           r.status === 'CANCELADA' ? (
