@@ -299,6 +299,14 @@ describe('cancelamento (US-3.8)', () => {
     expect(cancel.refund_receivable_id).toBeTruthy();
     const refund = await env.admin().one<{ total: string }>(`select total from public.receivables where id = $1`, [cancel.refund_receivable_id]);
     expect(n(refund.total)).toBe(20);
+    // A baixa da parcela da compra cancelada não pode mais ser estornada (viraria reembolso em dobro).
+    const paid = await env.admin().one<{ id: number }>(
+      `select i.id from public.installments i join public.purchases p on p.payable_id = i.payable_id where p.id = $1 and i.status = 'PAGA'`,
+      [result.purchase_id],
+    );
+    await expect(
+      env.as(dono, (s) => s.rpc('reverse_installment_payment', { p_request_id: rid(), p_installment_id: paid.id, p_reason: 'Teste' })),
+    ).rejects.toThrow(/foi cancelado/);
     expect(await env.admin().query(`select * from private.rebuild_balances()`)).toEqual([]);
   });
 });

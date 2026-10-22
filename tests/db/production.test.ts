@@ -253,6 +253,37 @@ describe('acabamento, falhas e estorno', () => {
     expect(await env.admin().query(`select * from private.rebuild_balances()`)).toEqual([]);
   });
 
+  it('estorno bloqueado quando peças da impressão foram vendidas, mesmo com estoque reposto por outra impressão (RN-21)', async () => {
+    const item = await variantItem(coracao);
+    const finish = async (jobId: number, qty: number) => {
+      const [o] = await outputs(jobId);
+      await env.as(dono, (s) =>
+        s.rpc('finish_print_job', {
+          p_request_id: rid(), p_print_job_id: jobId,
+          p_result: { actual_minutes: 20, materials: [{ item_id: pla, actual_g: qty * 6 }], outputs: [{ output_id: o!.id, qty_good: qty, qty_failed: 0 }] },
+        }),
+      );
+    };
+    const before = n((await balance(item)).qty_on_hand);
+    const first = await plan([[coracao, 3]]);
+    await finish(first.print_job_id, 3);
+    // Vende tudo o que havia antes + 2 peças desta impressão.
+    const direct = await env.admin().one<{ id: number }>(`select id from public.sales_channels where name = 'Venda direta'`);
+    const sale = await env.as(dono, (s) =>
+      s.rpc<{ order_id: number }>('quick_sale', { p_request_id: rid(), p_sale: { channel_id: direct.id, lines: [{ variant_id: coracao, qty: before + 2, unit_price: 4 }], packaging: [] } }),
+    );
+    const number = (await env.admin().one<{ number: string }>(`select number from public.sales_orders where id = $1`, [sale.order_id])).number;
+    // Outra impressão repõe o estoque: há saldo livre, mas as peças da primeira já foram entregues.
+    const second = await plan([[coracao, 5]]);
+    await finish(second.print_job_id, 5);
+    await expect(
+      env.as(dono, (s) => s.rpc('reverse_print_job', { p_request_id: rid(), p_print_job_id: first.print_job_id, p_reason: 'Lançada errada' })),
+    ).rejects.toThrow(new RegExp(`entregues em ${number}`));
+    // A segunda não teve peças vendidas depois dela: pode ser estornada.
+    await env.as(dono, (s) => s.rpc('reverse_print_job', { p_request_id: rid(), p_print_job_id: second.print_job_id, p_reason: 'Lançada errada' }));
+    expect(await env.admin().query(`select * from private.rebuild_balances()`)).toEqual([]);
+  });
+
   it('falhas absorvidas pelas peças boas quando configurado (absorb_scrap_cost)', async () => {
     await env.admin().query(`update public.settings set absorb_scrap_cost = true`);
     const planned = await plan([[coracao, 4]]);
