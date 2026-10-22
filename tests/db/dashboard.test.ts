@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { Overview, ValuePath } from '../../src/data/dashboard-types';
 import { n, TestEnv } from './env';
 
 /** Módulo 8 — Visão geral, caminho do valor, DRE e caixa, com valores calculados à mão (seção 16.3). */
@@ -56,7 +57,7 @@ describe('Visão geral (US-8.1)', () => {
   it('indicadores do topo batem com os valores calculados à mão', async () => {
     const d = await today();
     const from = `${d.slice(0, 7)}-01`;
-    const o = await env.as(dono, (s) => s.rpc<Record<string, any>>('dashboard_overview', { p_from: from, p_to: d }));
+    const o = await env.as(dono, (s) => s.rpc<Overview>('dashboard_overview', { p_from: from, p_to: d }));
     // Caixa: 100 + 15 (venda) − 30 (30% da internet)
     expect(n(o.cash_available)).toBe(85);
     expect(n(o.sales.current)).toBe(15);
@@ -73,7 +74,7 @@ describe('Visão geral (US-8.1)', () => {
 
   it('caminho do valor: cada peça numa etapa (US-8.2)', async () => {
     const d = await today();
-    const path = await env.as(dono, (s) => s.rpc<Record<string, any>>('value_path', { p_from: `${d.slice(0, 7)}-01`, p_to: d }));
+    const path = await env.as(dono, (s) => s.rpc<ValuePath>('value_path', { p_from: `${d.slice(0, 7)}-01`, p_to: d }));
     expect(n(path.stock.pieces)).toBe(7);
     expect(n(path.reserved.pieces)).toBe(0);
     expect(n(path.received.pieces)).toBe(3);

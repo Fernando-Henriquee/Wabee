@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/cn';
-import { normalizeName } from '@/lib/import/normalize';
+import { normalizeName } from '@/lib/text';
 
 export interface PickerOption {
   id: string;

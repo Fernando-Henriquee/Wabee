@@ -17,7 +17,7 @@ const CACHE_VERSION = 'v1';
 
 let store: ReturnType<typeof createStore> | null = null;
 function idbStore() {
-  store ??= createStore('magi-doces', 'query-cache');
+  store ??= createStore('wabee', 'query-cache');
   return store;
 }
 

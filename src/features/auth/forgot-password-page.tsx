@@ -31,7 +31,7 @@ export function ForgotPasswordPage() {
     <AuthLayout
       title="Recuperar senha"
       subtitle="Enviaremos um link para você criar uma nova senha."
-      footer={<Link className="text-accent-ink hover:underline" to="/entrar">Voltar para o login</Link>}
+      footer={<Link className="text-ink underline decoration-accent decoration-2 underline-offset-4" to="/entrar">Voltar para o login</Link>}
     >
       {sent ? (
         <p role="status" className="rounded-lg bg-success-soft px-3 py-3 text-sm text-success">

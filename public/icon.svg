@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Wabee: o "b." listrado da logo, mel sobre preto. -->
+  <defs>
+    <clipPath id="b">
+      <rect x="128" y="112" width="64" height="300" rx="6" />
+      <path clip-rule="evenodd" d="M258 196a108 108 0 1 1 0 216a108 108 0 1 1 0-216zM258 256a48 48 0 1 0 0 96a48 48 0 1 0 0-96z" />
+      <circle cx="404" cy="386" r="26" />
+    </clipPath>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#141414" />
+  <g clip-path="url(#b)" fill="#F5B800">
+    <rect x="96" y="112" width="360" height="21" />
+    <rect x="96" y="142" width="360" height="21" />
+    <rect x="96" y="172" width="360" height="21" />
+    <rect x="96" y="202" width="360" height="21" />
+    <rect x="96" y="232" width="360" height="21" />
+    <rect x="96" y="262" width="360" height="21" />
+    <rect x="96" y="292" width="360" height="21" />
+    <rect x="96" y="322" width="360" height="21" />
+    <rect x="96" y="352" width="360" height="21" />
+    <rect x="96" y="382" width="360" height="30" />
+  </g>
+</svg>

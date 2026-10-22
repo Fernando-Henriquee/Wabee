@@ -35,7 +35,7 @@ export function DialogContent({ title, description, children, footer, className,
       >
         <div className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
           <div className="min-w-0">
-            <DialogPrimitive.Title className="font-display text-lg font-semibold text-ink">{title}</DialogPrimitive.Title>
+            <DialogPrimitive.Title className="text-lg font-semibold text-ink">{title}</DialogPrimitive.Title>
             {description ? (
               <DialogPrimitive.Description className="mt-0.5 text-sm text-muted">{description}</DialogPrimitive.Description>
             ) : (
@@ -76,7 +76,7 @@ export function ConfirmDialog({ open, onOpenChange, title, description, confirmL
       <AlertPrimitive.Portal>
         <AlertPrimitive.Overlay className="fixed inset-0 z-50 bg-ink/40" />
         <AlertPrimitive.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-line bg-panel p-5 shadow-[var(--shadow-pop)]">
-          <AlertPrimitive.Title className="font-display text-lg font-semibold">{title}</AlertPrimitive.Title>
+          <AlertPrimitive.Title className="text-lg font-semibold">{title}</AlertPrimitive.Title>
           <AlertPrimitive.Description className="mt-2 text-sm text-ink-soft">{description}</AlertPrimitive.Description>
           {children ? <div className="mt-4">{children}</div> : null}
           <div className="mt-5 flex flex-wrap justify-end gap-2">

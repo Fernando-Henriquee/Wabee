@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Backup dos dados do Magi Doces (veja docs/BACKUP.md).
+# Backup dos dados do Wabee (veja docs/BACKUP.md).
 # Uso: SUPABASE_DB_URL='postgresql://...' npm run backup:db
 set -euo pipefail
 
@@ -14,7 +14,7 @@ fi
 
 mkdir -p backups
 chmod 700 backups
-file="backups/magi-doces-$(date +%Y-%m-%d_%H%M).sql.gz"
+file="backups/wabee-$(date +%Y-%m-%d_%H%M).sql.gz"
 
 # Somente dados do schema public: a estrutura vem das migrations versionadas.
 # Não usar --table junto com --schema: o pg_dump exportaria só a tabela indicada.
@@ -28,7 +28,7 @@ file="backups/magi-doces-$(date +%Y-%m-%d_%H%M).sql.gz"
     --no-owner \
     --no-privileges \
     --schema=public \
-    --exclude-table-data=public.business_members \
+    --exclude-table-data=public.app_members \
     --exclude-table-data=public.profiles
 } | gzip -9 > "$file"
 

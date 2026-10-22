@@ -1,5 +1,5 @@
 import { formatDateBR } from './dates';
-import { formatDecimalBR } from './money';
+import { formatDecimal } from './money';
 
 /**
  * Exportação de dados em CSV (padrão brasileiro: ";" e vírgula decimal, UTF-8
@@ -18,7 +18,7 @@ function formatCell(value: unknown, kind: ColumnKind): string {
   if (value === null || value === undefined) return '';
   switch (kind) {
     case 'money':
-      return formatDecimalBR(Number(value));
+      return formatDecimal(Number(value));
     case 'date':
       return formatDateBR(String(value));
     case 'number':
@@ -67,7 +67,7 @@ export function toSheetRows<T>(rows: T[], columns: ExportColumn<T>[]): Array<Rec
       const value = column.value(row);
       const kind = column.kind ?? 'text';
       if (value === null || value === undefined) record[column.header] = null;
-      else if (kind === 'money') record[column.header] = Number(value) / 100;
+      else if (kind === 'money') record[column.header] = Number(value);
       else if (kind === 'number') record[column.header] = Number(value);
       else if (kind === 'date') record[column.header] = formatDateBR(String(value));
       else if (kind === 'boolean') record[column.header] = value ? 'Sim' : 'Não';

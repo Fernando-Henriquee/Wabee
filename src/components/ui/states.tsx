@@ -43,7 +43,7 @@ export function EmptyState({ icon, title, description, action, className }: { ic
   return (
     <div className={cn('flex flex-col items-center justify-center gap-2 rounded-[var(--radius-card)] border border-dashed border-line-strong bg-panel/60 px-6 py-10 text-center', className)}>
       {icon ? <div className="mb-1 text-accent-ink [&_svg]:size-8">{icon}</div> : null}
-      <p className="font-display text-lg text-ink">{title}</p>
+      <p className="text-base font-semibold text-ink">{title}</p>
       {description ? <p className="max-w-md text-sm text-muted">{description}</p> : null}
       {action ? <div className="mt-2">{action}</div> : null}
     </div>

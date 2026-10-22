@@ -10,7 +10,7 @@ import { join } from 'node:path';
 const dir = join(process.cwd(), 'supabase', 'migrations');
 const files = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();
 const parts = files.map((file) => `-- >>> ${file}\n${readFileSync(join(dir, file), 'utf8').trim()}\n`);
-const header = `-- Magi Doces — instalação completa (${files.length} migrations), gerado em ${new Date().toISOString()}
+const header = `-- Wabee — instalação completa (${files.length} migrations), gerado em ${new Date().toISOString()}
 -- Cole TUDO no Supabase → SQL Editor → New query → Run, num projeto novo.
 -- Executa numa única transação: se algo falhar, nada fica pela metade.
 begin;

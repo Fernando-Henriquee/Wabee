@@ -28,7 +28,8 @@
     "provision": "tsx scripts/provision-users.ts",
     "backup:db": "bash scripts/backup-db.sh",
     "sql:bundle": "tsx scripts/bundle-migrations.ts",
-    "db:migrate": "tsx scripts/db-migrate.ts"
+    "db:migrate": "tsx scripts/db-migrate.ts",
+    "member:add": "tsx scripts/add-member.ts"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",

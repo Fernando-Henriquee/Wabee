@@ -1,5 +1,5 @@
 import { RefreshCw, TriangleAlert } from 'lucide-react';
-import { useBusiness } from '@/features/business/business-context';
+import { useMember } from '@/features/member/member-context';
 import { useOnline } from '@/lib/connectivity';
 import { cn } from '@/lib/cn';
 import { formatDateTimeBR } from '@/lib/dates';
@@ -19,9 +19,9 @@ interface QueryLike {
  */
 export function Freshness({ query, className }: { query: QueryLike; className?: string }) {
   const online = useOnline();
-  const { business } = useBusiness();
+  const { settings } = useMember();
   if (!query.dataUpdatedAt) return null;
-  const when = formatDateTimeBR(new Date(query.dataUpdatedAt).toISOString(), business.timezone);
+  const when = formatDateTimeBR(new Date(query.dataUpdatedAt).toISOString(), settings.timezone);
   const outdated = !online || (query.isError && query.data !== undefined);
   return (
     <p className={cn('inline-flex items-center gap-1.5 text-xs', outdated ? 'font-medium text-warning' : 'text-muted', className)} aria-live="polite">

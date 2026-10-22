@@ -49,7 +49,7 @@ if (options.reset && dataDir && existsSync(dataDir)) {
   rmSync(join(stateDir, 'storage'), { recursive: true, force: true });
 }
 
-console.log('Magi Doces — AMBIENTE LOCAL (emulador da API Supabase)');
+console.log('Wabee — AMBIENTE LOCAL (emulador da API Supabase)');
 const db = await LocalDatabase.open(dataDir);
 const secret = loadSecret();
 const auth = new LocalAuth(db, secret);
@@ -230,30 +230,20 @@ async function handleStorage(req: IncomingMessage, res: ServerResponse, url: URL
 async function handleLocalAdmin(req: IncomingMessage, res: ServerResponse, url: URL) {
   if (req.headers['x-local-admin'] !== adminToken) return sendJson(res, 403, { message: 'Token administrativo local inválido' });
   if (url.pathname === '/local-admin/users' && req.method === 'POST') {
-    const body = parseJson(await readBody(req)) as { email?: string; password?: string; name?: string; role?: string; business_name?: string };
+    const body = parseJson(await readBody(req)) as { email?: string; password?: string; name?: string; role?: string };
     const email = (body.email ?? '').trim().toLowerCase();
-    const role = body.role ?? 'owner';
+    const role = body.role ?? 'dono';
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return sendJson(res, 400, { message: 'E-mail inválido' });
     if (!body.password || body.password.length < 8) return sendJson(res, 400, { message: 'A senha precisa ter pelo menos 8 caracteres' });
-    if (!['owner', 'editor', 'viewer'].includes(role)) return sendJson(res, 400, { message: 'Papel inválido (owner, editor ou viewer)' });
+    if (!['dono', 'producao', 'leitura'].includes(role)) return sendJson(res, 400, { message: 'Perfil inválido (dono, producao ou leitura)' });
     const userId = await auth.createUser(email, body.password, body.name?.trim() || undefined);
-    // Com business_name, cria um negócio novo e isolado (usado pelos testes E2E).
-    const businessName = body.business_name?.trim();
-    const businessId = businessName
-      ? await db.admin(async (pg) => {
-          const created = await pg.query<{ id: string }>('insert into public.businesses (name) values ($1) returning id', [businessName]);
-          await pg.query('select private.seed_business_defaults($1)', [created.rows[0]!.id]);
-          return created.rows[0]!.id;
-        })
-      : seeded.businesses.main!;
     await db.admin((pg) =>
       pg.query(
-        `insert into public.business_members (business_id, user_id, role) values ($1, $2, $3)
-         on conflict (business_id, user_id) do update set role = excluded.role`,
-        [businessId, userId, role],
+        `insert into public.app_members (user_id, role) values ($1, $2) on conflict (user_id) do update set role = excluded.role, active = true`,
+        [userId, role],
       ),
     );
-    return sendJson(res, 201, { id: userId, email, role, business_id: businessId, business: businessName ?? 'Magi Doces (ambiente local)' });
+    return sendJson(res, 201, { id: userId, email, role });
   }
   return sendJson(res, 404, { message: 'Comando administrativo desconhecido' });
 }
@@ -282,16 +272,11 @@ const server = createServer((req, res) => {
   });
 });
 
-const storefronts = await db.admin(async (pg) =>
-  (await pg.query<{ name: string; storefront_token: string }>(`select name, storefront_token from public.businesses where storefront_enabled order by name`)).rows,
-);
-
 server.listen(Number(options.port), '127.0.0.1', () => {
   console.log(`\nAPI local em http://127.0.0.1:${options.port}  (chave anon: ${LOCAL_ANON_KEY})`);
   console.log(options.memory ? 'Banco em memória (descartado ao encerrar).' : `Banco persistido em ${dataDir}`);
   console.log('\nContas de teste do ambiente local:');
   for (const account of seeded.accounts) console.log(`  ${account.email}  /  ${account.password}   (${account.description})`);
-  for (const store of storefronts) console.log(`\nLink de compras (${store.name}): http://localhost:5173/compra/${store.storefront_token}`);
   console.log('\nEstes dados existem só neste ambiente local e não têm relação com dados reais.\n');
 });
 

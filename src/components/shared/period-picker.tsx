@@ -2,7 +2,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useSearchParams } from 'react-router';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useBusiness } from '@/features/business/business-context';
+import { useMember } from '@/features/member/member-context';
 import { cn } from '@/lib/cn';
 import { describePeriod, isValidISODate, type Period, type PeriodKind, periodFor, shiftPeriod } from '@/lib/dates';
 
@@ -15,7 +15,7 @@ const KINDS: Array<{ value: PeriodKind; label: string }> = [
 
 /** Período selecionado, guardado na URL (?periodo=mes&de=…&ate=…). */
 export function usePeriod(defaultKind: Exclude<PeriodKind, 'custom'> = 'month'): [Period, (period: Period) => void] {
-  const { today } = useBusiness();
+  const { today } = useMember();
   const [params, setParams] = useSearchParams();
   const kind = (params.get('periodo') as PeriodKind | null) ?? defaultKind;
   const from = params.get('de');
@@ -37,7 +37,7 @@ export function usePeriod(defaultKind: Exclude<PeriodKind, 'custom'> = 'month'):
 }
 
 export function PeriodPicker({ period, onChange, className }: { period: Period; onChange: (period: Period) => void; className?: string }) {
-  const { today } = useBusiness();
+  const { today } = useMember();
   return (
     <div className={cn('flex flex-col gap-2 sm:flex-row sm:items-center', className)}>
       <div role="radiogroup" aria-label="Tipo de período" className="inline-flex rounded-xl border border-line bg-subtle p-1">

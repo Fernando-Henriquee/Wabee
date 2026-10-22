@@ -22,7 +22,7 @@ export async function wipeLocalData() {
   try {
     for (const storage of [localStorage, sessionStorage]) {
       for (const key of Object.keys(storage)) {
-        if (key.startsWith('magi:')) storage.removeItem(key);
+        if (key.startsWith('wabee:')) storage.removeItem(key);
       }
     }
   } catch {

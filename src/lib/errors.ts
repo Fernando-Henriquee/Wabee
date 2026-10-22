@@ -20,12 +20,14 @@ interface ErrorLike {
 }
 
 const UNIQUE_MESSAGES: Array<[RegExp, string]> = [
-  [/products_business_name_uq/, 'Já existe um produto com este nome.'],
-  [/ingredients_business_name_uq/, 'Já existe um ingrediente com este nome.'],
-  [/suppliers_business_name_uq/, 'Já existe um fornecedor com este nome.'],
-  [/recipes_product_id_key/, 'Este produto já tem uma receita.'],
-  [/recipe_items_recipe_id_ingredient_id_key/, 'Este ingrediente já está na receita.'],
-];
+  [/items_sku_key/, 'Já existe um item com este SKU.'],
+  [/product_variants_sku_key/, 'Já existe uma variação com este SKU.'],
+  [/suppliers_name_uq/, 'Já existe um fornecedor com este nome.'],
+  [/payment_accounts_name_uq/, 'Já existe uma conta com este nome.'],
+  [/sales_channels_name_uq/, 'Já existe um canal com este nome.'],
+  [/filament_specs_uq/, 'Já existe um filamento com o mesmo material, marca e cor.'],
+  [/cost_rates_no_overlap|channel_prices_no_overlap|sales_channel_fees_no_overlap/, 'Já existe uma vigência que se sobrepõe a este período.'],
+]
 
 const TECHNICAL = /violates|permission denied|duplicate key|invalid input syntax|null value in column|value too long|does not exist|syntax error|out of range|JSON object requested|Failed to fetch|NetworkError|Load failed/i;
 
@@ -52,7 +54,7 @@ export function describeError(error: unknown): string {
   if (/at least \d+ characters|weak_password|Password should/i.test(message)) return 'Senha fraca: use pelo menos 8 caracteres, misturando letras e números.';
   if (/should be different from the old password/i.test(message)) return 'A nova senha precisa ser diferente da atual.';
   if (/refresh token|session.*(missing|expired|not found)|JWT expired/i.test(message)) return 'Sua sessão expirou. Entre novamente.';
-  if (/Signups not allowed/i.test(message)) return 'O cadastro público está desativado. Peça um convite à administradora.';
+  if (/Signups not allowed/i.test(message)) return 'O cadastro público está desativado. Peça um convite ao dono do sistema.';
 
   switch (e.code) {
     case 'PGRST116':
@@ -60,6 +62,9 @@ export function describeError(error: unknown): string {
     case '42501':
       return TECHNICAL.test(message) ? 'Você não tem permissão para esta operação.' : message;
     case '23505':
+    case '23P01':
+      // Mensagens das RPCs já vêm em português; as do banco são traduzidas pelo nome da restrição.
+      if (!TECHNICAL.test(message)) return message;
       return UNIQUE_MESSAGES.find(([pattern]) => pattern.test(message))?.[1] ?? 'Já existe um registro com estes dados.';
     case '23503':
       return 'Este registro tem histórico vinculado e não pode ser excluído. Desative-o em vez disso.';

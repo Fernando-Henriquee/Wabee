@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { EmptyState } from '@/components/ui/states';
 import { cn } from '@/lib/cn';
-import { normalizeName } from '@/lib/import/normalize';
+import { normalizeName } from '@/lib/text';
 
 export interface Column<T> {
   key: string;
@@ -159,7 +159,7 @@ export function DataTable<T>({
                           className={cn('px-3 py-2.5 align-middle', column.align === 'right' && 'text-right', column.align === 'center' && 'text-center', column.className)}
                         >
                           {index === 0 && rowHref ? (
-                            <Link to={rowHref(row)} className="font-medium text-ink hover:text-accent-ink hover:underline">
+                            <Link to={rowHref(row)} className="font-medium text-ink underline-offset-4 hover:underline hover:decoration-accent hover:decoration-2">
                               {content}
                             </Link>
                           ) : (

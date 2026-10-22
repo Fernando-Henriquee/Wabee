@@ -1,4 +1,5 @@
 import { PGlite } from '@electric-sql/pglite';
+import { btree_gist } from '@electric-sql/pglite/contrib/btree_gist';
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,7 +38,7 @@ export class LocalDatabase {
 
   static async open(dataDir: string | null): Promise<LocalDatabase> {
     if (dataDir && !existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
-    const pg = dataDir ? new PGlite(dataDir) : new PGlite();
+    const pg = dataDir ? new PGlite(dataDir, { extensions: { btree_gist } }) : new PGlite({ extensions: { btree_gist } });
     const db = new LocalDatabase(pg);
     await db.migrate();
     return db;

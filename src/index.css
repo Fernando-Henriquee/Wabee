@@ -1,0 +1,123 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/unbounded';
+
+/*
+ * Identidade Wabee (logo): creme de fundo, preto da marca nas ações principais e
+ * amarelo-mel nos destaques. O amarelo é usado como preenchimento (texto preto sobre
+ * ele, 11:1); texto amarelo sobre fundo claro usa o tom escuro "accent-ink" (6:1).
+ * Contrastes de texto sobre o creme: ink 17:1, ink-soft 10:1, muted 5,2:1.
+ */
+@theme {
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Unbounded Variable', 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+
+  --color-cream: #f4f2ec;
+  --color-panel: #ffffff;
+  --color-subtle: #efece4;
+  --color-line: #e4e0d6;
+  --color-line-strong: #cfc9bb;
+
+  --color-ink: #141414;
+  --color-ink-soft: #3d3a33;
+  --color-muted: #6b675d;
+
+  --color-brand: #141414;
+  --color-brand-hover: #2c2b28;
+  --color-brand-fg: #f4f2ec;
+
+  --color-accent: #f5b800;
+  --color-accent-hover: #e0a800;
+  --color-accent-soft: #fdf1c7;
+  --color-accent-ink: #7a5000;
+
+  --color-success: #2e6b46;
+  --color-success-soft: #e3f0e7;
+  --color-warning: #8a5300;
+  --color-warning-soft: #fbefd5;
+  --color-danger: #b3261e;
+  --color-danger-soft: #f9e3e1;
+  --color-info: #2f5f80;
+  --color-info-soft: #e3eef6;
+
+  /* Cores fixas por camada de custo em todo o sistema (seção 14.7). Ordem categórica
+     validada para daltonismo (ΔE ≥ 9 entre vizinhas); sempre com legenda e tabela. */
+  --color-layer-material: #2a78d6;
+  --color-layer-energy: #eb6834;
+  --color-layer-depreciation: #1baf7a;
+  --color-layer-operational: #eda100;
+  --color-layer-labor: #e87ba4;
+  --color-chart-grid: #ece9e1;
+
+  --radius-card: 0.875rem;
+  --shadow-card: 0 1px 2px rgb(20 20 20 / 0.05), 0 1px 1px rgb(20 20 20 / 0.03);
+  --shadow-pop: 0 12px 32px -12px rgb(20 20 20 / 0.28);
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+    -webkit-tap-highlight-color: transparent;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-cream font-sans text-ink antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+
+  h1 {
+    @apply font-display text-ink;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  h2,
+  h3 {
+    @apply font-sans text-ink;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--color-accent);
+    color: var(--color-ink);
+  }
+}
+
+@utility num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum', 'cv11';
+}
+
+@utility safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@utility safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+/* Listras do "b" da logo, usadas como detalhe de marca. */
+@utility honey-stripes {
+  background-image: repeating-linear-gradient(to bottom, var(--color-accent) 0 6px, transparent 6px 9px);
+}
+
+/* Valor estimado (14.1): sublinhado tracejado + tooltip explica a origem. */
+@utility estimated {
+  text-decoration: underline dotted var(--color-muted);
+  text-underline-offset: 3px;
+}
+
+/* "b" listrado da logo em texto (o tamanho das listras acompanha a fonte). */
+@utility honey-text {
+  background-image: repeating-linear-gradient(to bottom, var(--color-accent) 0 0.085em, transparent 0.085em 0.125em);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}

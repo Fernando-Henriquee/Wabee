@@ -26,10 +26,12 @@ export function LoginPage() {
     setError(null);
     const { error: signInError } = await supabase.auth.signInWithPassword({ email: values.email, password: values.password });
     if (signInError) setError(describeError(signInError));
+    // Auditoria do login (US-0.5): o IP vem dos cabeçalhos da API.
+    else void supabase.rpc('log_login').then(() => undefined, () => undefined);
   });
 
   return (
-    <AuthLayout title="Entrar" subtitle="Acesso restrito a contas convidadas." footer={<Link className="text-accent-ink hover:underline" to="/recuperar-senha">Esqueci minha senha</Link>}>
+    <AuthLayout title="Entrar" subtitle="Acesso restrito a contas convidadas." footer={<Link className="text-ink underline decoration-accent decoration-2 underline-offset-4" to="/recuperar-senha">Esqueci minha senha</Link>}>
       <form onSubmit={onSubmit} className="space-y-4" noValidate>
         <Field label="E-mail" error={form.formState.errors.email?.message}>
           <Input type="email" autoComplete="username" inputMode="email" autoFocus {...form.register('email')} />

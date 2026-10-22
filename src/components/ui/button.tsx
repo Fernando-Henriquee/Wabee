@@ -10,12 +10,12 @@ const buttonVariants = cva(
     variants: {
       variant: {
         primary: 'bg-brand text-brand-fg hover:bg-brand-hover shadow-sm',
-        accent: 'bg-accent text-ink hover:bg-[#e2a6b7]',
+        accent: 'bg-accent text-ink hover:bg-accent-hover shadow-sm',
         outline: 'border border-line-strong bg-panel text-ink hover:bg-subtle',
         ghost: 'text-ink-soft hover:bg-subtle hover:text-ink',
         danger: 'bg-danger text-white hover:bg-[#8f2a31]',
         'danger-outline': 'border border-danger/40 bg-panel text-danger hover:bg-danger-soft',
-        link: 'text-accent-ink underline-offset-4 hover:underline px-0 h-auto',
+        link: 'text-ink underline underline-offset-4 decoration-accent decoration-2 hover:decoration-ink px-0 h-auto',
       },
       size: {
         sm: 'h-8 px-3 text-sm',

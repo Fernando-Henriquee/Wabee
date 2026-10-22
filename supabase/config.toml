@@ -1,0 +1,35 @@
+# Configuração do projeto Supabase (Supabase CLI: `supabase link`, `supabase db push`).
+# As migrations também podem ser aplicadas com `npm run db:migrate` (docs/SUPABASE.md).
+project_id = "wabee"
+
+[api]
+enabled = true
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+major_version = 17
+
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5173/redefinir-senha"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+# Sem cadastro público: contas são convidadas.
+enable_signup = false
+enable_anonymous_sign_ins = false
+minimum_password_length = 8
+password_requirements = "letters_digits"
+
+[auth.email]
+enable_signup = false
+double_confirm_changes = true
+enable_confirmations = true
+secure_password_change = true
+
+[storage]
+enabled = true
+file_size_limit = "25MiB"
