@@ -35,7 +35,7 @@ import { formatMinutes, formatQty, toNumber } from '@/lib/money';
 import { useRequestId } from '@/lib/use-request-id';
 import { DurationInput, Notice, QtyStepper } from './bits';
 import { useNow } from './use-now';
-import { elapsedMinutes, formatTimeBR, fromLocalInput, gramsUntilFailure, splitByWeight, toLocalInput } from './helpers';
+import { formatTimeBR, fromLocalInput, gramsUntilFailure, splitByWeight, toLocalInput } from './helpers';
 
 interface JobDialogProps {
   job: PrintJobRow;
@@ -236,7 +236,8 @@ function FinishForm({ job, outputs, materials, onClose }: { job: PrintJobRow; ou
   const { can } = useMember();
   const [requestId, renew] = useRequestId();
   const [openedAt] = useState(() => Date.now());
-  const [minutes, setMinutes] = useState<number | null>(() => elapsedMinutes(job.started_at, openedAt) ?? job.est_minutes);
+  // Tempo de máquina vem da ficha (previsto ao planejar), nunca do tempo em que o cartão ficou no quadro.
+  const [minutes, setMinutes] = useState<number | null>(job.est_minutes);
   const [customEnd, setCustomEnd] = useState(false);
   const [finishedAt, setFinishedAt] = useState(() => toLocalInput(new Date(openedAt)));
   const [rows, setRows] = useState<MaterialState[]>(() => initialMaterials(materials, (m) => String(toNumber(m.est_g))));
@@ -262,12 +263,6 @@ function FinishForm({ job, outputs, materials, onClose }: { job: PrintJobRow; ou
         }),
       );
     }
-  };
-
-  const changeEnd = (value: string) => {
-    setFinishedAt(value);
-    const iso = fromLocalInput(value);
-    if (iso && job.started_at) setMinutes(elapsedMinutes(job.started_at, new Date(iso).getTime()));
   };
 
   const totalGood = outputs.reduce((s, o) => s + (counts[o.id]?.good ?? 0), 0);
@@ -337,7 +332,7 @@ function FinishForm({ job, outputs, materials, onClose }: { job: PrintJobRow; ou
     >
       <div className="space-y-5">
         <section className="space-y-2" aria-label="Tempo">
-          <Field label="Tempo de impressão" hint={job.started_at ? `Começou ${formatTimeBR(job.started_at)} · previsto ${formatMinutes(job.est_minutes)}` : `Previsto ${formatMinutes(job.est_minutes)}`}>
+          <Field label="Tempo de máquina" hint={`Previsto pela ficha: ${formatMinutes(job.est_minutes)} · altere se souber o tempo real da impressora`}>
             <DurationInput value={minutes} onChange={setMinutes} />
           </Field>
           <label className="inline-flex items-center gap-2 text-sm text-ink-soft">
@@ -345,7 +340,7 @@ function FinishForm({ job, outputs, materials, onClose }: { job: PrintJobRow; ou
           </label>
           {customEnd ? (
             <Field label="Horário do término">
-              <Input type="datetime-local" value={finishedAt} max={toLocalInput(new Date())} onChange={(e) => changeEnd(e.target.value)} />
+              <Input type="datetime-local" value={finishedAt} max={toLocalInput(new Date())} onChange={(e) => setFinishedAt(e.target.value)} />
             </Field>
           ) : null}
         </section>
@@ -602,8 +597,8 @@ function FailForm({ job, materials, onClose, onReplanned }: { job: PrintJobRow; 
   const { can } = useMember();
   const [requestId, renew] = useRequestId();
   const [replanId, renewReplan] = useRequestId();
-  const [openedAt] = useState(() => Date.now());
-  const initialMinutes = elapsedMinutes(job.started_at, openedAt) ?? 0;
+  // Sem o tempo real da impressora, parte do previsto pela ficha (editável); o tempo no quadro não conta.
+  const initialMinutes = job.est_minutes;
   const [minutes, setMinutes] = useState<number | null>(initialMinutes);
   const [reason, setReason] = useState<FailureReason | ''>('');
   const [rows, setRows] = useState<MaterialState[]>(() => initialMaterials(materials, (m) => gramsUntilFailure(m.est_g, initialMinutes, job.est_minutes)));

@@ -353,3 +353,79 @@ describe('correções de 22/10 (embalagem por pedido, crédito sem cliente, divi
     ).rejects.toThrow(/precisa começar depois/);
   });
 });
+
+describe('item pontual criado no pedido (US-4.9)', () => {
+  const lines = () => [{ item_id: pla, qty_per_unit: 30 }];
+
+  it('prévia mostra custo pela ficha simplificada e preço sugerido, sem gravar nada', async () => {
+    const before = await env.admin().one<{ c: number }>(`select count(*)::int c from public.products`);
+    const preview = await env.as(dono, (s) =>
+      s.rpc<{ unit_cost: number; suggested_price: number; estimate: { material: number; operational: number } }>('preview_custom_item', {
+        p_item: { name: 'Troféu da escola', channel_id: direct, units_per_plate: 1, est_print_minutes_per_plate: 150, lines: lines() },
+      }),
+    );
+    // 30 g × 0,10 = 3,00 + 2,5 h × 1,20 = 3,00
+    expect(n(preview.estimate.material)).toBe(3);
+    expect(n(preview.estimate.operational)).toBe(3);
+    expect(n(preview.unit_cost)).toBe(6);
+    expect(n(preview.suggested_price)).toBe(8.57); // 6 ÷ (1 − 0,30) na venda direta sem taxas
+    expect((await env.admin().one<{ c: number }>(`select count(*)::int c from public.products`)).c).toBe(before.c);
+  });
+
+  it('cria variação oculta fora do catálogo e percorre pedido → produção → entrega com CMV real', async () => {
+    const created = await env.as(dono, (s) =>
+      s.rpc<{ variant_id: number; item_id: number; unit_cost: number }>('create_custom_item', {
+        p_request_id: rid(),
+        p_item: { name: 'Troféu da escola', units_per_plate: 1, est_print_minutes_per_plate: 150, unit_price: 25, lines: lines() },
+      }),
+    );
+    expect(n(created.unit_cost)).toBe(6);
+    const variant = await env.admin().one<{ is_hidden: boolean; is_custom: boolean; category: string }>(
+      `select v.is_hidden, p.is_custom, p.category from public.product_variants v join public.products p on p.id = v.product_id where v.id = $1`,
+      [created.variant_id],
+    );
+    expect(variant).toEqual({ is_hidden: true, is_custom: true, category: 'PERSONALIZADO' });
+
+    const result = await env.as(dono, (s) =>
+      s.rpc<{ order_id: number }>('create_order', {
+        p_request_id: rid(),
+        p_order: { kind: 'ENCOMENDA', channel_id: direct, confirm: true, lines: [{ variant_id: created.variant_id, qty: 2, unit_price: 25 }] },
+      }),
+    );
+    const job = await env.as(dono, (s) => s.rpc<{ print_job_id: number }>('produce_order', { p_request_id: rid(), p_order_id: result.order_id, p_equipment_id: printer }));
+    const [out] = await env.admin().query<{ id: number }>(`select id from public.print_job_outputs where print_job_id = $1`, [job.print_job_id]);
+    // Sem minutos informados: usa a ficha (2 mesas × 150 min = 5 h).
+    await env.as(dono, (s) =>
+      s.rpc('finish_print_job', {
+        p_request_id: rid(), p_print_job_id: job.print_job_id,
+        p_result: { materials: [{ item_id: pla, actual_g: 60 }], outputs: [{ output_id: out!.id, qty_good: 2, qty_failed: 0 }] },
+      }),
+    );
+    expect((await order(result.order_id)).status).toBe('PRONTO');
+    await env.as(dono, (s) => s.rpc('deliver_order', { p_request_id: rid(), p_order_id: result.order_id, p_delivery: { method: 'RETIRADA', packaging: [] } }));
+    const o = await order(result.order_id);
+    expect(o.status).toBe('ENTREGUE');
+    expect(n(o.cogs_total)).toBe(12); // 2 × (3,00 material + 3,00 operacional)
+  });
+
+  it('com "salvar no catálogo", cria um produto normal visível', async () => {
+    const created = await env.as(dono, (s) =>
+      s.rpc<{ variant_id: number }>('create_custom_item', {
+        p_request_id: rid(),
+        p_item: { name: 'Porta-lápis', save_to_catalog: true, category: 'UTILIDADE', est_print_minutes_per_plate: 60, lines: lines() },
+      }),
+    );
+    const variant = await env.admin().one<{ is_hidden: boolean; is_custom: boolean }>(
+      `select v.is_hidden, p.is_custom from public.product_variants v join public.products p on p.id = v.product_id where v.id = $1`,
+      [created.variant_id],
+    );
+    expect(variant).toEqual({ is_hidden: false, is_custom: false });
+  });
+
+  it('exige filamento e tempo de impressão', async () => {
+    await expect(
+      env.as(dono, (s) => s.rpc('create_custom_item', { p_request_id: rid(), p_item: { name: 'Sem filamento', est_print_minutes_per_plate: 60, lines: [] } })),
+    ).rejects.toThrow(/filamento/);
+    await expect(env.as(dono, (s) => s.rpc('create_custom_item', { p_request_id: rid(), p_item: { name: 'Sem tempo', lines: lines() } }))).rejects.toThrow(/tempo/);
+  });
+});

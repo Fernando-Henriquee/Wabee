@@ -111,6 +111,18 @@ export function useSaveOnboardingState(onSaved?: (state: OnboardingState) => voi
   });
 }
 
+/** Frase que o dono digita para confirmar o reset (conferida também no banco). */
+export const RESET_CONFIRM_PHRASE = 'APAGAR TUDO';
+
+/** Reset do sistema: apaga a operação, os produtos e os itens; mantém configurações e cadastros base. */
+export function useResetSystem(onDone?: () => void) {
+  return useWrite<void>({
+    mutationFn: () => rpc('reset_system', { p_confirm: RESET_CONFIRM_PHRASE }),
+    success: 'Sistema resetado. Comece pelo assistente inicial.',
+    onSuccess: () => onDone?.(),
+  });
+}
+
 // -----------------------------------------------------------------------------
 // Canais de venda e taxas (US-6.2)
 // -----------------------------------------------------------------------------

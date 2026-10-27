@@ -19,6 +19,8 @@ export interface CatalogProduct {
   bomId: number | null;
   unitCost: number | null;
   referencePrice: number | null;
+  /** Item pontual de encomenda (variação oculta): fora das listas de escolha, mas reconhecido nas linhas. */
+  hidden: boolean;
 }
 
 export function productKey(line: { variantId?: number | null; itemId?: number | null }): string {
@@ -26,23 +28,27 @@ export function productKey(line: { variantId?: number | null; itemId?: number | 
 }
 
 export function useCatalog() {
-  const variants = useVariants();
+  // Inclui as ocultas para mostrar nome e custo de itens pontuais já lançados em pedidos.
+  const variants = useVariants({ includeHidden: true });
   const components = useItems({ kind: 'COMPONENT' });
-  const products = useMemo<CatalogProduct[]>(() => {
+  const all = useMemo<CatalogProduct[]>(() => {
     const list: CatalogProduct[] = (variants.data ?? []).filter((v) => v.active && v.product_active).map((v) => ({
       key: `v${v.id}`,
       variantId: v.id,
       itemId: v.item_id,
       name: v.product_name,
       variantName: v.name,
-      fullName: v.full_name,
+      // Item pontual: o nome da variação ("pontual") não acrescenta nada.
+      fullName: v.is_hidden ? v.product_name : v.full_name,
       sku: v.sku,
       photoPath: v.photo_path,
       free: Number(v.qty_available ?? 0),
       onHand: Number(v.qty_on_hand ?? 0),
       bomId: v.active_bom_id,
-      unitCost: v.avg_cost_total === null ? null : Number(v.avg_cost_total),
+      // Custo médio zero sem nunca ter tido estoque não é custo: conta como "sem custo" na prévia.
+      unitCost: v.avg_cost_total === null || (Number(v.avg_cost_total) === 0 && Number(v.qty_on_hand ?? 0) <= 0) ? null : Number(v.avg_cost_total),
       referencePrice: v.reference_price === null ? null : Number(v.reference_price),
+      hidden: v.is_hidden,
     }));
     for (const c of (components.data ?? []).filter((i: ItemRow) => i.is_sellable)) {
       list.push({
@@ -59,11 +65,13 @@ export function useCatalog() {
         bomId: null,
         unitCost: c.avg_cost_total === null ? null : Number(c.avg_cost_total),
         referencePrice: null,
+        hidden: false,
       });
     }
     return list;
   }, [variants.data, components.data]);
-  const byKey = useMemo(() => new Map(products.map((p) => [p.key, p])), [products]);
+  const products = useMemo(() => all.filter((p) => !p.hidden), [all]);
+  const byKey = useMemo(() => new Map(all.map((p) => [p.key, p])), [all]);
   return {
     products,
     byKey,

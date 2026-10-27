@@ -497,10 +497,13 @@ export function useCostRates(enabled = true) {
   });
 }
 
-/** Variações que podem ir para a mesa: ativas, não ocultas, de produtos ativos. */
+/**
+ * Variações que podem ir para a mesa: ativas, de produtos ativos. Inclui as ocultas (itens pontuais
+ * de encomenda) para planejar a partir do pedido; os seletores manuais escondem as ocultas.
+ */
 export function usePlannableVariants() {
   return useAppQuery(['production', 'variants'], async () => {
-    const rows = await unwrap<VariantRow[]>(from('v_product_variants').select('*').eq('active', true).eq('is_hidden', false).order('product_name').order('name'));
+    const rows = await unwrap<VariantRow[]>(from('v_product_variants').select('*').eq('active', true).order('product_name').order('name'));
     return rows.filter((v) => v.product_active !== false);
   });
 }

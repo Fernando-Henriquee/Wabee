@@ -469,7 +469,7 @@ function PlanForm() {
         title="Variação"
         loading={!variants.data}
         options={(variants.data ?? [])
-          .filter((v) => !outputs.some((o) => o.variantId === v.id))
+          .filter((v) => !v.is_hidden && !outputs.some((o) => o.variantId === v.id))
           .map((v) => ({
             id: String(v.id),
             label: v.full_name,
