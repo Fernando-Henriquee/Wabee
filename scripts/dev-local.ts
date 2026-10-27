@@ -1,4 +1,6 @@
 import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 
 /**
  * Ambiente local completo: emulador da API Supabase (PGlite) + Vite.
@@ -8,8 +10,15 @@ import { spawn } from 'node:child_process';
 const extra = process.argv.slice(2);
 const apiPort = process.env.LOCAL_API_PORT ?? '54321';
 
-const api = spawn('npx', ['tsx', 'tools/local-backend/server.ts', '--port', apiPort, ...extra], { stdio: 'inherit' });
-const web = spawn('npx', ['vite'], {
+// Executa o próprio node (sem npx): no Windows `npx` é um .cmd, que o spawn não roda sem shell.
+const viteBin = join(dirname(createRequire(import.meta.url).resolve('vite/package.json')), 'bin', 'vite.js');
+
+const api = spawn(
+  process.execPath,
+  ['--import', 'tsx', 'tools/local-backend/server.ts', '--port', apiPort, ...extra],
+  { stdio: 'inherit' },
+);
+const web = spawn(process.execPath, [viteBin], {
   stdio: 'inherit',
   env: {
     ...process.env,
