@@ -193,6 +193,27 @@ describe('acabamento, falhas e estorno', () => {
     expect(n((await balance(argola)).qty_on_hand)).toBe(91);
   });
 
+  it('sem minutos informados, o custo de máquina usa o tempo da ficha e não o tempo no quadro', async () => {
+    const planned = await plan([[coracao, 2]]);
+    const [o] = await outputs(planned.print_job_id);
+    // O cartão foi iniciado 14 h antes de ser finalizado (ficou no quadro de um dia para o outro).
+    const startedAt = new Date(Date.now() - 14 * 3_600_000).toISOString();
+    await env.as(producao, (s) => s.rpc('start_print_job', { p_request_id: rid(), p_print_job_id: planned.print_job_id, p_started_at: startedAt }));
+    const result = await env.as(producao, (s) =>
+      s.rpc<{ minutes: number; time_estimated: boolean }>('finish_print_job', {
+        p_request_id: rid(), p_print_job_id: planned.print_job_id,
+        p_result: { materials: [{ item_id: pla, actual_g: 12 }], outputs: [{ output_id: o!.id, qty_good: 2, qty_failed: 0 }] },
+      }),
+    );
+    const job = await env.admin().one<{ est_minutes: number; actual_minutes: number; cost_operational: string }>(
+      `select est_minutes, actual_minutes, cost_operational from public.print_jobs where id = $1`,
+      [planned.print_job_id],
+    );
+    expect(result.time_estimated).toBe(true);
+    expect(job.actual_minutes).toBe(job.est_minutes);
+    expect(n(job.cost_operational)).toBe(Math.round((job.est_minutes / 60) * 1.2 * 100) / 100);
+  });
+
   it('falha total: filamento baixado e todo o custo vai para falhas; replanejar cria nova impressão (US-5.5)', async () => {
     const planned = await plan([[coracao, 5]]);
     const before = n((await balance(pla)).qty_on_hand);

@@ -1,6 +1,7 @@
+import { keepPreviousData } from '@tanstack/react-query';
 import { from, rpc, unwrap } from './api';
 import { useAppQuery, useWrite } from './hooks';
-import type { ChannelPrice } from './products';
+import type { ChannelPrice, CostEstimate } from './products';
 
 /**
  * Vendas, pedidos, entregas e clientes (Módulo 6). Leituras pelas views v_* (sem
@@ -493,6 +494,58 @@ export function useCreateOrder(onDone?: (result: ConfirmResult) => void) {
   return useWrite<{ requestId: string; order: OrderInput }, ConfirmResult>({
     mutationFn: (v) => rpc('create_order', { p_request_id: v.requestId, p_order: v.order }),
     success: (r) => (r.status === 'RASCUNHO' ? `Rascunho ${r.number} salvo.` : `Pedido ${r.number} confirmado.`),
+    onSuccess: (r) => onDone?.(r),
+  });
+}
+
+// -----------------------------------------------------------------------------
+// Item pontual de encomenda (US-4.9): variação oculta com ficha simplificada
+// -----------------------------------------------------------------------------
+
+export interface CustomItemLine {
+  item_id: number;
+  qty_per_unit: string;
+}
+
+export interface CustomItemInput {
+  name: string;
+  channel_id?: number | null;
+  units_per_plate: number;
+  est_print_minutes_per_plate: number | null;
+  default_equipment_id?: number | null;
+  unit_price?: string | null;
+  save_to_catalog?: boolean;
+  lines: CustomItemLine[];
+}
+
+export interface CustomItemPreview {
+  estimate: CostEstimate;
+  unit_cost: number;
+  margin_target_pct: number;
+  suggested_price: number | null;
+}
+
+export interface CustomItemResult {
+  product_id: number;
+  variant_id: number;
+  item_id: number;
+  sku: string;
+  unit_cost: number;
+  estimate: CostEstimate;
+}
+
+export function usePreviewCustomItem(item: CustomItemInput | null) {
+  return useAppQuery(['custom-item-preview', item], () => rpc<CustomItemPreview>('preview_custom_item', { p_item: item }), {
+    enabled: Boolean(item),
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+  });
+}
+
+export function useCreateCustomItem(onDone?: (result: CustomItemResult) => void) {
+  return useWrite<{ requestId: string; item: CustomItemInput }, CustomItemResult>({
+    mutationFn: (v) => rpc('create_custom_item', { p_request_id: v.requestId, p_item: v.item }),
+    success: (_r, v) => (v.item.save_to_catalog ? `"${v.item.name}" criado e salvo no catálogo.` : `Item pontual "${v.item.name}" adicionado.`),
     onSuccess: (r) => onDone?.(r),
   });
 }

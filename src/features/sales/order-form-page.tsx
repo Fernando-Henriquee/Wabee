@@ -1,4 +1,4 @@
-import { CalendarClock, Gift, Info as InfoIcon, Plus, Trash2 } from 'lucide-react';
+import { CalendarClock, Gift, Info as InfoIcon, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { type ReactNode, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { Page, PageHeader } from '@/components/layout/page';
@@ -32,6 +32,7 @@ import { addDays, formatDateBR } from '@/lib/dates';
 import { describeError } from '@/lib/errors';
 import { formatBRL, formatNumber, formatPercent, toNumber } from '@/lib/money';
 import { useRequestId } from '@/lib/use-request-id';
+import { CustomItemDialog } from './custom-item-dialog';
 import { channelFeeAmount, defaultPackaging, estimateMargin, lineTotal, previewInstallments } from './cart';
 import { BackLink, CustomerField, ProductThumb, Segmented, ValueRow } from './sales-bits';
 import { type CustomerChoice, customerRef, dateToTimestamp, localDate, NO_CUSTOMER, type OrderPrefill } from './sales-utils';
@@ -47,6 +48,9 @@ interface FormLine {
   price: string | null;
   discount: string | null;
   isGift: boolean;
+  /** Item pontual recém-criado: nome e custo estimado pela ficha até o catálogo recarregar / haver estoque. */
+  label?: string;
+  estCost?: number | null;
 }
 
 interface TermRow {
@@ -223,6 +227,7 @@ function OrderForm({ orderId, number, initial, reason }: { orderId?: number; num
   const packagingItems = usePackagingItems();
   const [form, setForm] = useState<FormState>(initial);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [customOpen, setCustomOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [requestId, renew] = useRequestId();
   const [confirmRequestId, renewConfirm] = useRequestId();
@@ -236,7 +241,7 @@ function OrderForm({ orderId, number, initial, reason }: { orderId?: number; num
     const product = line.variantId || line.itemId ? catalog.byKey.get(productKey(line)) : undefined;
     const basePrice = pricing.price(product);
     const price = line.isGift ? 0 : line.price !== null ? toNumber(line.price) : basePrice;
-    return { line, product, basePrice, price, name: product?.fullName ?? line.customDescription ?? 'Produto' };
+    return { line, product, basePrice, price, name: product?.fullName ?? line.label ?? line.customDescription ?? 'Produto' };
   });
 
   const bomLines = useBomDeliveryLines(lines.map((l) => l.product?.bomId).filter((v): v is number => Boolean(v)));
@@ -249,7 +254,7 @@ function OrderForm({ orderId, number, initial, reason }: { orderId?: number; num
   const packCost = [...packDefaults].reduce((sum, [itemId, qty]) => sum + toNumber(qty) * toNumber(packagingItems.items.get(itemId)?.avgCost), 0);
 
   const preview = estimateMargin({
-    lines: lines.map((l) => ({ qty: l.line.qty, unitPrice: l.price ?? 0, discount: l.line.isGift ? 0 : l.line.discount, isGift: l.line.isGift, unitCost: l.product?.unitCost ?? null })),
+    lines: lines.map((l) => ({ qty: l.line.qty, unitPrice: l.price ?? 0, discount: l.line.isGift ? 0 : l.line.discount, isGift: l.line.isGift, unitCost: l.product?.unitCost ?? l.line.estCost ?? null })),
     orderDiscount: form.orderDiscount,
     shippingCharged: form.shipping,
     fee: pricing.fee,
@@ -423,13 +428,31 @@ function OrderForm({ orderId, number, initial, reason }: { orderId?: number; num
             title="Itens"
             description="Preço padrão: o do canal (ou o de referência). Brinde sai com preço zero."
             actions={
-              <Button size="sm" onClick={() => setPickerOpen(true)}>
-                <Plus /> Produto
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" onClick={() => setCustomOpen(true)}>
+                  <Sparkles /> Item pontual
+                </Button>
+                <Button size="sm" onClick={() => setPickerOpen(true)}>
+                  <Plus /> Produto
+                </Button>
+              </div>
             }
           >
             {form.lines.length === 0 ? (
-              <EmptyState title="Nenhum produto" description="Adicione os produtos do pedido." action={<Button onClick={() => setPickerOpen(true)}><Plus /> Adicionar produto</Button>} />
+              <EmptyState
+                title="Nenhum produto"
+                description="Adicione produtos do catálogo ou crie um item pontual para esta encomenda (não vira produto)."
+                action={
+                  <div className="flex flex-wrap justify-center gap-2">
+                    <Button onClick={() => setPickerOpen(true)}>
+                      <Plus /> Adicionar produto
+                    </Button>
+                    <Button variant="outline" onClick={() => setCustomOpen(true)}>
+                      <Sparkles /> Item pontual
+                    </Button>
+                  </div>
+                }
+              />
             ) : (
               <ul className="space-y-3">
                 {lines.map(({ line, product, basePrice, price, name }) => {
@@ -441,7 +464,7 @@ function OrderForm({ orderId, number, initial, reason }: { orderId?: number; num
                         <ProductThumb name={product?.name ?? name} photoPath={product?.photoPath} className="size-11 shrink-0 text-sm" />
                         <div className="min-w-0 flex-1">
                           <p className="font-medium leading-tight">
-                            {name} {line.isGift ? <Badge tone="accent" className="ml-1"><Gift className="size-3" /> brinde</Badge> : null}
+                            {name} {product?.hidden || line.label ? <Badge className="ml-1">pontual</Badge> : null} {line.isGift ? <Badge tone="accent" className="ml-1"><Gift className="size-3" /> brinde</Badge> : null}
                           </p>
                           {product ? (
                             <p className={cn('text-xs', qty > free ? 'text-warning' : 'text-muted')}>
@@ -653,6 +676,22 @@ function OrderForm({ orderId, number, initial, reason }: { orderId?: number; num
         options={options}
         onSelect={(option) => addProduct(option.id)}
         emptyText="Nenhum produto à venda encontrado."
+      />
+      <CustomItemDialog
+        open={customOpen}
+        onOpenChange={setCustomOpen}
+        channelId={form.channelId}
+        onAdded={(added) =>
+          setForm((f) => ({
+            ...f,
+            // Item pontual é sempre produzido para o cliente.
+            kind: 'ENCOMENDA',
+            lines: [
+              ...f.lines,
+              { uid: uid(), variantId: added.variantId, itemId: null, customDescription: null, qty: added.qty, price: added.price, discount: null, isGift: false, label: added.name, estCost: added.unitCost },
+            ],
+          }))
+        }
       />
     </Page>
   );

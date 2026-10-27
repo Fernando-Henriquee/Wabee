@@ -6,6 +6,7 @@ import {
   FolderTree,
   History,
   type LucideIcon,
+  RotateCcw,
   ShieldCheck,
   Smartphone,
   Sparkles,
@@ -15,13 +16,16 @@ import {
   Users,
 } from 'lucide-react';
 import { useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { Page, PageHeader } from '@/components/layout/page';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/dialog';
+import { Field } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
 import { ErrorState } from '@/components/ui/states';
-import { TAX_REGIME_LABELS, useStockIntegrity } from '@/data/settings';
+import { RESET_CONFIRM_PHRASE, TAX_REGIME_LABELS, useResetSystem, useStockIntegrity } from '@/data/settings';
 import { type Capability, ROLE_LABELS, useMember } from '@/features/member/member-context';
 import { formatDateBR } from '@/lib/dates';
 
@@ -145,6 +149,54 @@ function IntegrityCard() {
   );
 }
 
+/** Zona de perigo: reset do sistema (somente o dono). */
+function ResetCard() {
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [phrase, setPhrase] = useState('');
+  const reset = useResetSystem(() => void navigate('/'));
+  const change = (next: boolean) => {
+    setOpen(next);
+    if (!next) setPhrase('');
+  };
+  return (
+    <Card className="border-danger/40">
+      <CardHeader
+        title="Zona de perigo"
+        description="Começar do zero: apaga toda a operação e os produtos. Não dá para desfazer."
+        actions={
+          <Button variant="danger" size="sm" onClick={() => setOpen(true)}>
+            <RotateCcw /> Resetar sistema
+          </Button>
+        }
+      />
+      <ConfirmDialog
+        open={open}
+        onOpenChange={change}
+        title="Resetar o sistema?"
+        description="Faça um backup antes (npm run backup:db). Depois do reset não há como recuperar os dados apagados."
+        confirmLabel="Apagar tudo"
+        confirmDisabled={phrase.trim().toUpperCase() !== RESET_CONFIRM_PHRASE}
+        onConfirm={() => reset.mutateAsync()}
+      >
+        <div className="space-y-3 text-sm">
+          <p>
+            <strong>Apaga:</strong> pedidos, entregas, recebimentos, pagamentos, compras, impressões, estoque e movimentações, caixa, resultado,
+            fechamentos de mês, auditoria, produtos, fichas técnicas e itens (filamentos, componentes, embalagens).
+          </p>
+          <p>
+            <strong>Mantém:</strong> configurações da empresa, pessoas com acesso, canais e taxas, taxas de custo, categorias financeiras,
+            equipamentos, fornecedores, clientes e contas financeiras.
+          </p>
+          <Field label={`Digite ${RESET_CONFIRM_PHRASE} para confirmar`}>
+            <Input value={phrase} onChange={(e) => setPhrase(e.target.value)} autoComplete="off" />
+          </Field>
+        </div>
+      </ConfirmDialog>
+    </Card>
+  );
+}
+
 export function SettingsHubPage() {
   const { can, role, settings } = useMember();
   const groups = GROUPS.map((group) => ({ ...group, links: group.links.filter((link) => !link.capability || can(link.capability)) })).filter(
@@ -182,6 +234,7 @@ export function SettingsHubPage() {
           </section>
         ))}
         {can('audit') ? <IntegrityCard /> : null}
+        {can('settings') ? <ResetCard /> : null}
       </div>
     </Page>
   );
