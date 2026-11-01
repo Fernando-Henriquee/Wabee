@@ -30,11 +30,9 @@ import { cn } from '@/lib/cn';
 import { formatDateTimeBR } from '@/lib/dates';
 import { formatCost, formatMinutes, formatNumber, formatQty, toNumber } from '@/lib/money';
 import { useRequestId } from '@/lib/use-request-id';
-import { Info, JobProgress, JobStatusBadge, Notice, OutputStatusBadge } from './bits';
+import { Info, JobStatusBadge, Notice, OutputStatusBadge } from './bits';
 import { FinishingDialog, UnitCostLayers } from './finishing-dialog';
-import { describeProgress, elapsedMinutes } from './helpers';
 import { CancelJobDialog, FailJobDialog, FinishJobDialog, StartJobDialog } from './job-dialogs';
-import { useNow } from './use-now';
 
 type Action = 'start' | 'finish' | 'fail' | 'cancel' | 'reverse' | null;
 
@@ -57,7 +55,6 @@ function JobDetail({ job }: { job: PrintJobRow }) {
   const { can, settings } = useMember();
   const showCosts = can('costs');
   const navigate = useNavigate();
-  const now = useNow(30_000);
   const outputs = useJobOutputs(job.id);
   const materials = useJobMaterials(job.id);
   const entries = usePostProcessEntries((outputs.data ?? []).map((o) => o.id));
@@ -75,7 +72,6 @@ function JobDetail({ job }: { job: PrintJobRow }) {
   });
 
   const closed = job.status === 'CONCLUIDA' || job.status === 'FALHOU' || job.status === 'ESTORNADA';
-  const elapsed = job.status === 'IMPRIMINDO' ? elapsedMinutes(job.started_at, now) : null;
   const tz = settings.timezone;
   const dialogOpen = (kind: Action) => ({ open: action === kind, onOpenChange: (o: boolean) => !o && setAction(null) });
 
@@ -113,7 +109,7 @@ function JobDetail({ job }: { job: PrintJobRow }) {
                   </Button>
                 </>
               ) : null}
-              {job.status === 'IMPRIMINDO' ? (
+              {job.status === 'IMPRIMINDO' || job.status === 'ACABAMENTO' ? (
                 <>
                   <Button variant="outline" onClick={() => setAction('cancel')}>
                     <XCircle /> Cancelar
@@ -122,7 +118,7 @@ function JobDetail({ job }: { job: PrintJobRow }) {
                     <AlertTriangle /> Falha total
                   </Button>
                   <Button size="lg" onClick={() => setAction('finish')}>
-                    <ClipboardCheck /> Finalizar
+                    <ClipboardCheck /> Concluir
                   </Button>
                 </>
               ) : null}
@@ -143,18 +139,6 @@ function JobDetail({ job }: { job: PrintJobRow }) {
         }
       />
 
-      {job.status === 'IMPRIMINDO' ? (
-        <Card className="mb-4 p-4">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <p className="text-sm font-medium">Imprimindo desde {formatDateTimeBR(job.started_at, tz)}</p>
-            <p className="text-sm text-muted">
-              Previsão de término <strong className="num text-ink">{formatDateTimeBR(job.expected_end, tz)}</strong>
-            </p>
-          </div>
-          <JobProgress elapsed={elapsed} estimated={job.est_minutes} className="mt-3 h-3" />
-          <p className="num mt-1.5 text-xs text-muted">{describeProgress(elapsed, job.est_minutes)}</p>
-        </Card>
-      ) : null}
       {job.status === 'ESTORNADA' ? (
         <Notice tone="warning" icon={<RotateCcw />} className="mb-4">
           Estornada em {formatDateTimeBR(job.reversed_at, tz)}: {job.reverse_reason}. Consumos, peças e custos desta impressão foram revertidos.

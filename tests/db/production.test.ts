@@ -91,11 +91,11 @@ describe('teste de referência 11.3', () => {
     expect(n((await balance(pla)).qty_on_hand)).toBe(2000);
   });
 
-  it('iniciar marca a impressora como ocupada (US-5.3)', async () => {
+  it('iniciar não trava a impressora: o quadro é só ilustrativo (US-5.3)', async () => {
     const started = await env.as(dono, (s) => s.rpc<{ expected_end: string }>('start_print_job', { p_request_id: rid(), p_print_job_id: job }));
     expect(started.expected_end).toBeTruthy();
     const other = await plan([[coracao, 1]]);
-    await expect(env.as(dono, (s) => s.rpc('start_print_job', { p_request_id: rid(), p_print_job_id: other.print_job_id }))).rejects.toThrow(/já está imprimindo/);
+    await env.as(dono, (s) => s.rpc('start_print_job', { p_request_id: rid(), p_print_job_id: other.print_job_id }));
     await env.as(dono, (s) => s.rpc('cancel_print_job', { p_request_id: rid(), p_print_job_id: other.print_job_id }));
   });
 
@@ -344,5 +344,88 @@ describe('perfil Produção (US-0.3)', () => {
   it('produção não estorna impressão (só o dono)', async () => {
     const job = await env.admin().one<{ id: number }>(`select id from public.print_jobs where status = 'CONCLUIDA' order by id limit 1`);
     await expect(env.as(producao, (s) => s.rpc('reverse_print_job', { p_request_id: rid(), p_print_job_id: job.id, p_reason: 'teste' }))).rejects.toThrow(/permissão/);
+  });
+});
+
+describe('quadro livre (cards de projeto)', () => {
+  const status = async (jobId: number) => (await env.admin().one<{ status: string }>(`select status from public.print_jobs where id = $1`, [jobId])).status;
+  const move = (who: string, jobId: number, to: string) => env.as(who, (s) => s.rpc('move_print_job', { p_request_id: rid(), p_print_job_id: jobId, p_to: to }));
+
+  it('Planejada ↔ Imprimindo ↔ Acabamento só muda a etapa, sem estoque e sem travar a impressora', async () => {
+    const a = await plan([[coracao, 2]]);
+    const b = await plan([[coracao, 3]]);
+    const plaBefore = n((await balance(pla)).qty_on_hand);
+    await move(producao, a.print_job_id, 'IMPRIMINDO');
+    await move(producao, b.print_job_id, 'IMPRIMINDO'); // mesma impressora, duas mesas "imprimindo"
+    await move(producao, a.print_job_id, 'ACABAMENTO');
+    await move(producao, a.print_job_id, 'PLANEJADA');
+    expect(await status(a.print_job_id)).toBe('PLANEJADA');
+    expect(await status(b.print_job_id)).toBe('IMPRIMINDO');
+    expect(n((await balance(pla)).qty_on_hand)).toBe(plaBefore);
+    const started = await env.admin().one<{ started_at: string | null }>(`select started_at from public.print_jobs where id = $1`, [a.print_job_id]);
+    expect(started.started_at).toBeNull();
+    // O painel do equipamento lista as duas sem quebrar.
+    const eq = await env.as(dono, (s) => s.one<{ printing_code: string | null }>(`select printing_code from public.v_equipment where id = $1`, [printer]));
+    expect(eq.printing_code).toContain(b.code);
+  });
+
+  it('Concluída baixa o filamento pela ficha, monta componentes e libera tudo no estoque', async () => {
+    const job = await plan([[abelha, 4]]);
+    await move(producao, job.print_job_id, 'ACABAMENTO');
+    const plaBefore = n((await balance(pla)).qty_on_hand);
+    const argolaBefore = n((await balance(argola)).qty_on_hand);
+    const item = await variantItem(abelha);
+    const fgBefore = n((await balance(item)).qty_on_hand);
+    await env.as(producao, (s) => s.rpc('complete_print_job', { p_request_id: rid(), p_print_job_id: job.print_job_id }));
+    expect(await status(job.print_job_id)).toBe('CONCLUIDA');
+    expect(n((await balance(pla)).qty_on_hand)).toBe(plaBefore - 32); // 4 × 8 g da ficha
+    expect(n((await balance(argola)).qty_on_hand)).toBe(argolaBefore - 4);
+    expect(n((await balance(item)).qty_on_hand)).toBe(fgBefore + 4);
+    const [o] = await outputs(job.print_job_id);
+    expect(o!.status).toBe('LIBERADA');
+    const j = await env.admin().one<{ actual_minutes: number; time_estimated: boolean }>(`select actual_minutes, time_estimated from public.print_jobs where id = $1`, [job.print_job_id]);
+    expect(j).toEqual({ actual_minutes: 48, time_estimated: true }); // 4/10 da mesa de 120 min
+  });
+
+  it('voltar de Concluída desfaz estoque e custo e devolve o mesmo card; dá para concluir de novo', async () => {
+    const job = await plan([[coracao, 5]]);
+    const item = await variantItem(coracao);
+    const plaBefore = n((await balance(pla)).qty_on_hand);
+    const fgBefore = n((await balance(item)).qty_on_hand);
+    await env.as(producao, (s) => s.rpc('complete_print_job', { p_request_id: rid(), p_print_job_id: job.print_job_id }));
+    // Produção não desfaz conclusão (é estorno, só o dono).
+    await expect(move(producao, job.print_job_id, 'PLANEJADA')).rejects.toThrow();
+    await move(dono, job.print_job_id, 'PLANEJADA');
+    expect(await status(job.print_job_id)).toBe('PLANEJADA');
+    expect(n((await balance(pla)).qty_on_hand)).toBe(plaBefore);
+    expect(n((await balance(item)).qty_on_hand)).toBe(fgBefore);
+    const j = await env.admin().one<{ cost_total: string; finished_at: string | null }>(`select cost_total, finished_at from public.print_jobs where id = $1`, [job.print_job_id]);
+    expect(n(j.cost_total)).toBe(0);
+    expect(j.finished_at).toBeNull();
+    await env.as(producao, (s) => s.rpc('complete_print_job', { p_request_id: rid(), p_print_job_id: job.print_job_id }));
+    expect(n((await balance(item)).qty_on_hand)).toBe(fgBefore + 5);
+    expect(await env.admin().query(`select * from private.rebuild_balances()`)).toEqual([]);
+  });
+
+  it('encomenda: voltar a impressão solta a reserva feita para o pedido', async () => {
+    const direct = (await env.admin().one<{ id: number }>(`select id from public.sales_channels where name = 'Venda direta'`)).id;
+    const item = await variantItem(coracao);
+    const free = n((await balance(item)).qty_on_hand) - n((await balance(item)).qty_reserved);
+    const order = await env.as(dono, (s) =>
+      s.rpc<{ order_id: number }>('create_order', {
+        p_request_id: rid(),
+        p_order: { kind: 'ENCOMENDA', channel_id: direct, confirm: true, lines: [{ variant_id: coracao, qty: free + 2, unit_price: 4 }] },
+      }),
+    );
+    const job = await env.as(dono, (s) => s.rpc<{ print_job_id: number }>('produce_order', { p_request_id: rid(), p_order_id: order.order_id, p_equipment_id: printer }));
+    await env.as(producao, (s) => s.rpc('complete_print_job', { p_request_id: rid(), p_print_job_id: job.print_job_id }));
+    expect(n((await balance(item)).qty_reserved)).toBeGreaterThanOrEqual(free + 2);
+    await move(dono, job.print_job_id, 'ACABAMENTO');
+    expect(await status(job.print_job_id)).toBe('ACABAMENTO');
+    const line = await env.admin().one<{ qty_reserved: string }>(`select qty_reserved from public.sales_order_lines where order_id = $1`, [order.order_id]);
+    expect(n(line.qty_reserved)).toBe(free);
+    const o = await env.admin().one<{ status: string }>(`select status from public.sales_orders where id = $1`, [order.order_id]);
+    expect(o.status).toBe('EM_PRODUCAO');
+    expect(await env.admin().query(`select * from private.rebuild_balances()`)).toEqual([]);
   });
 });

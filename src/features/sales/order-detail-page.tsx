@@ -36,7 +36,7 @@ import { BackLink, OrderKindBadge, OrderStatusBadge, ValueRow } from './sales-bi
 import { localDate, whatsappLink } from './sales-utils';
 import { productKey, useCatalog, usePackagingItems } from './use-catalog';
 
-const PRINT_STATUS: Record<string, string> = { PLANEJADA: 'Planejada', IMPRIMINDO: 'Imprimindo', CONCLUIDA: 'Concluída', FALHOU: 'Falhou', CANCELADA: 'Cancelada', ESTORNADA: 'Estornada' };
+const PRINT_STATUS: Record<string, string> = { PLANEJADA: 'Planejada', IMPRIMINDO: 'Imprimindo', ACABAMENTO: 'Acabamento', CONCLUIDA: 'Concluída', FALHOU: 'Falhou', CANCELADA: 'Cancelada', ESTORNADA: 'Estornada' };
 
 export function OrderDetailPage() {
   const { id } = useParams();
@@ -352,7 +352,7 @@ function OrderDetail({ order }: { order: SalesOrderRow }) {
                         <span className="font-medium">{j.code}</span>
                         <span className="block truncate text-xs text-muted">{j.outputs_summary}</span>
                       </span>
-                      <Badge tone={j.status === 'CONCLUIDA' ? 'success' : j.status === 'IMPRIMINDO' ? 'accent' : j.status === 'PLANEJADA' ? 'info' : 'neutral'}>{PRINT_STATUS[j.status] ?? j.status}</Badge>
+                      <Badge tone={j.status === 'CONCLUIDA' ? 'success' : j.status === 'IMPRIMINDO' || j.status === 'ACABAMENTO' ? 'accent' : j.status === 'PLANEJADA' ? 'info' : 'neutral'}>{PRINT_STATUS[j.status] ?? j.status}</Badge>
                     </Link>
                   </li>
                 ))}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BomLineRow, CostRateRow } from '@/data/production';
-import { bomFilamentGrams, bomMinutes, describeProgress, elapsedMinutes, formatWhen, gramsUntilFailure, latestRate, splitByWeight, splitMinutes } from './helpers';
+import { bomFilamentGrams, bomMinutes, formatWhen, gramsUntilFailure, latestRate, splitByWeight, splitMinutes } from './helpers';
 
 function line(partial: Partial<BomLineRow>): BomLineRow {
   return {
@@ -22,13 +22,6 @@ function line(partial: Partial<BomLineRow>): BomLineRow {
 }
 
 describe('produção — prévias', () => {
-  it('minutos decorridos desde o início, nunca negativos', () => {
-    const start = '2026-10-22T09:00:00-03:00';
-    expect(elapsedMinutes(start, new Date('2026-10-22T10:30:00-03:00').getTime())).toBe(90);
-    expect(elapsedMinutes(start, new Date('2026-10-22T08:00:00-03:00').getTime())).toBe(0);
-    expect(elapsedMinutes(null)).toBeNull();
-  });
-
   it('divide minutos em h + min', () => {
     expect(splitMinutes(90)).toEqual({ h: 1, m: 30 });
     expect(splitMinutes(45)).toEqual({ h: 0, m: 45 });
@@ -65,11 +58,6 @@ describe('produção — prévias', () => {
     expect(gramsUntilFailure(100, 30, 120)).toBe('25');
     expect(gramsUntilFailure(100, 300, 120)).toBe('100');
     expect(gramsUntilFailure(100, 0, 120)).toBe('0');
-  });
-
-  it('descreve o andamento', () => {
-    expect(describeProgress(70, 120)).toBe('1h10 de 2h · faltam ~50 min');
-    expect(describeProgress(130, 120)).toBe('2h10 · 10 min além do previsto');
   });
 
   it('data relativa no fuso da empresa', () => {
