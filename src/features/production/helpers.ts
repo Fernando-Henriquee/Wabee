@@ -1,20 +1,12 @@
 import Big from 'big.js';
 import type { BomLineRow, CostRateRow, RateType, VariantRow } from '@/data/production';
 import { DEFAULT_TIMEZONE, todayIn } from '@/lib/dates';
-import { formatMinutes, formatNumber, type Numeric, toNumber } from '@/lib/money';
+import { formatNumber, type Numeric, toNumber } from '@/lib/money';
 
 /**
  * Contas das PRÉVIAS da produção (o banco recalcula e grava): minutos decorridos,
  * gramas e minutos pela ficha, rateio dos gramas por saída e datas locais.
  */
-
-/** Minutos inteiros entre o início e agora (nunca negativo). */
-export function elapsedMinutes(startedAt: string | null | undefined, now: number = Date.now()): number | null {
-  if (!startedAt) return null;
-  const start = new Date(startedAt).getTime();
-  if (Number.isNaN(start)) return null;
-  return Math.max(0, Math.round((now - start) / 60_000));
-}
 
 /** Total de minutos → partes h e min. */
 export function splitMinutes(total: number | null | undefined): { h: number; m: number } | null {
@@ -137,16 +129,6 @@ export function formatWhen(timestamp: string | null | undefined, today: string, 
   if (day === yesterday.toISOString().slice(0, 10)) return `ontem ${time}`;
   const [, m, d] = day.split('-');
   return `${d}/${m} ${time}`;
-}
-
-/** "1h10 de 2h00" e quanto falta / passou. */
-export function describeProgress(elapsed: number | null, estimated: number): string {
-  if (elapsed === null) return `previsto ${formatMinutes(estimated)}`;
-  if (estimated <= 0) return `${formatMinutes(elapsed)} imprimindo`;
-  const diff = estimated - elapsed;
-  if (diff > 0) return `${formatMinutes(elapsed)} de ${formatMinutes(estimated)} · faltam ~${formatMinutes(diff)}`;
-  if (diff === 0) return `${formatMinutes(elapsed)} · deve estar terminando`;
-  return `${formatMinutes(elapsed)} · ${formatMinutes(-diff)} além do previsto`;
 }
 
 /** Vigência atual (ou futura mais recente) de um tipo de taxa num escopo. */

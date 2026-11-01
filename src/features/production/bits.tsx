@@ -14,6 +14,7 @@ import { splitMinutes } from './helpers';
 const JOB_TONES: Record<PrintJobStatus, Tone> = {
   PLANEJADA: 'neutral',
   IMPRIMINDO: 'accent',
+  ACABAMENTO: 'info',
   CONCLUIDA: 'success',
   FALHOU: 'danger',
   CANCELADA: 'neutral',
@@ -36,24 +37,6 @@ export function OutputStatusBadge({ status }: { status: OutputStatus | null }) {
 
 export function EquipmentStatusBadge({ status }: { status: EquipmentStatus }) {
   return <Badge tone={status === 'ATIVO' ? 'success' : status === 'MANUTENCAO' ? 'warning' : 'neutral'}>{EQUIPMENT_STATUS_LABELS[status]}</Badge>;
-}
-
-/** Barra de andamento da impressão (decorrido ÷ estimado). */
-export function JobProgress({ elapsed, estimated, className }: { elapsed: number | null; estimated: number; className?: string }) {
-  const pct = estimated > 0 && elapsed !== null ? Math.min(1, elapsed / estimated) : 0;
-  const late = estimated > 0 && elapsed !== null && elapsed > estimated;
-  return (
-    <span
-      className={cn('block h-2 w-full overflow-hidden rounded-full bg-subtle', className)}
-      role="progressbar"
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-valuenow={Math.round(pct * 100)}
-      aria-label="Andamento da impressão"
-    >
-      <span className={cn('block h-full rounded-full', late ? 'bg-warning' : 'bg-accent')} style={{ width: `${pct * 100}%` }} />
-    </span>
-  );
 }
 
 const boxClass = 'h-11 w-full text-center text-base num';

@@ -38,8 +38,9 @@ export function useWrite<TVars = void, TResult = unknown>({ mutationFn, success,
     },
     onSuccess: async (result, vars) => {
       await queryClient.invalidateQueries({ queryKey: ['w'] });
-      if (success) {
-        const message = typeof success === 'function' ? success(result, vars) : success;
+      const message = typeof success === 'function' ? success(result, vars) : success;
+      // Mensagem vazia: escrita silenciosa (ex.: mover um card no quadro).
+      if (message) {
         toast.success(message, undo
           ? {
               duration: 10_000,

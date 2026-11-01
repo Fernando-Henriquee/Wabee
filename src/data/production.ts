@@ -6,7 +6,7 @@ import { useAppQuery, useWrite } from './hooks';
  * perfil Produção as colunas de valores chegam nulas. Escritas só pelas RPCs.
  */
 
-export type PrintJobStatus = 'PLANEJADA' | 'IMPRIMINDO' | 'CONCLUIDA' | 'FALHOU' | 'CANCELADA' | 'ESTORNADA';
+export type PrintJobStatus = 'PLANEJADA' | 'IMPRIMINDO' | 'ACABAMENTO' | 'CONCLUIDA' | 'FALHOU' | 'CANCELADA' | 'ESTORNADA';
 export type FailureReason =
   | 'DESCOLOU_MESA'
   | 'ENTUPIMENTO'
@@ -27,6 +27,7 @@ export type RateMode = 'SPLIT' | 'COMBINED' | 'MISSING';
 export const JOB_STATUS_LABELS: Record<PrintJobStatus, string> = {
   PLANEJADA: 'Planejada',
   IMPRIMINDO: 'Imprimindo',
+  ACABAMENTO: 'Acabamento',
   CONCLUIDA: 'Concluída',
   FALHOU: 'Falhou',
   CANCELADA: 'Cancelada',
@@ -371,10 +372,10 @@ export function errorHint(error: unknown): string | null {
 // Leituras
 // -----------------------------------------------------------------------------
 
-const ACTIVE: PrintJobStatus[] = ['PLANEJADA', 'IMPRIMINDO'];
+const ACTIVE: PrintJobStatus[] = ['PLANEJADA', 'IMPRIMINDO', 'ACABAMENTO'];
 export const HISTORY_STATUSES: PrintJobStatus[] = ['CONCLUIDA', 'FALHOU', 'CANCELADA', 'ESTORNADA'];
 
-/** Impressões do quadro: planejadas, imprimindo e terminadas desde `since` (início do dia). */
+/** Impressões do quadro: planejadas, imprimindo, em acabamento e concluídas desde `since`. */
 export function useBoardJobs(since: string) {
   return useAppQuery(
     ['print-jobs', 'board', since],
@@ -582,6 +583,26 @@ export function useReplanPrintJob(onDone?: (result: PlanResult) => void) {
     mutationFn: (v) => rpc<PlanResult>('replan_print_job', { p_request_id: v.requestId, p_print_job_id: v.jobId }),
     success: (r) => `Nova impressão ${r.code} planejada com as mesmas peças.`,
     onSuccess: (r) => onDone?.(r),
+  });
+}
+
+/** Etapa do quadro em que um card pode ser solto. */
+export type BoardStage = 'PLANEJADA' | 'IMPRIMINDO' | 'ACABAMENTO';
+
+/** Move o card no quadro. De Concluída para trás desfaz a conclusão (estorno; só o dono). */
+export function useMovePrintJob() {
+  return useWrite<{ requestId: string; jobId: number; to: BoardStage; undo?: boolean }, { print_job_id: number; from: PrintJobStatus; to: BoardStage }>({
+    mutationFn: (v) => rpc('move_print_job', { p_request_id: v.requestId, p_print_job_id: v.jobId, p_to: v.to }),
+    success: (r, v) => (v.undo ? 'Conclusão desfeita.' : r.from === 'CONCLUIDA' || r.from === 'FALHOU' ? `Conclusão desfeita: voltou para ${JOB_STATUS_LABELS[r.to]}.` : ''),
+  });
+}
+
+/** Concluir pelo quadro: baixa o filamento e o custo pela ficha e libera as peças no estoque. */
+export function useCompletePrintJob(onUndo?: (jobId: number) => Promise<unknown>) {
+  return useWrite<{ requestId: string; jobId: number; code: string }, CloseResult>({
+    mutationFn: (v) => rpc('complete_print_job', { p_request_id: v.requestId, p_print_job_id: v.jobId }),
+    success: (_r, v) => `${v.code} concluída: filamento baixado e peças no estoque.`,
+    undo: onUndo ? { run: (r) => onUndo(r.print_job_id) } : undefined,
   });
 }
 
