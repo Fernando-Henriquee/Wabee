@@ -239,3 +239,10 @@ export interface OwnerWithdrawal {
   month_result: number;
   suggested: number;
 }
+
+/** Valor total do estoque pelo custo médio, por tipo de item. */
+export interface StockValue {
+  total: number;
+  by_kind: Array<{ kind: string; items: number; qty: number; value: number }>;
+  finished: { units: number; reserved: number; free: number };
+}

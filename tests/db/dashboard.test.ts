@@ -181,6 +181,13 @@ describe('Visão geral (US-8.1)', () => {
     expect(n(w.cash_room)).toBe(Math.max(0, Math.round((85 - n(basis)) * 100) / 100));
     expect(n(w.suggested)).toBe(0);
 
+    // Estoque total: 7 chaveiros × R$ 1,40 (material 1,00 + operacional 0,40).
+    const stock = await env.as(dono, (s) => s.rpc<{ total: number; by_kind: Array<{ kind: string; value: number }>; finished: { units: number; free: number } }>('stock_value', {}));
+    expect(n(stock.total)).toBe(9.8);
+    expect(stock.by_kind.find((k) => k.kind === 'FINISHED_GOOD')!.value).toBeDefined();
+    expect(n(stock.finished.units)).toBe(7);
+    expect(n(stock.finished.free)).toBe(7);
+
     const insights = await env.as(dono, (s) => s.rpc<Array<{ kind: string }>>('dashboard_insights', {}));
     expect(insights.some((a) => a.kind === 'margin_low')).toBe(false);
 

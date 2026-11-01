@@ -15,17 +15,20 @@ import {
   type GoalExpenseSource,
   type MarginBlock,
   type MonthlyGoal,
+  type Overview,
   useAlerts,
   useInsights,
   useCashProjection,
   useMonthlyGoal,
   useNowPrinting,
   useOverview,
+  useStockValue,
   useSalesSeries,
   useTopProducts,
   useValuePath,
   type ValueStage,
 } from '@/data/dashboard';
+import { type ItemKind, KIND_LABELS } from '@/data/inventory';
 import { useMember } from '@/features/member/member-context';
 import { cn } from '@/lib/cn';
 import { diffInDays, formatDateBR, formatDateTimeBR } from '@/lib/dates';
@@ -130,6 +133,8 @@ function OnboardingCallout() {
 
 function Indicators({ from, to, layer, compact = false }: { from: string; to: string; layer: CostLayerView; compact?: boolean }) {
   const overview = useOverview(from, to);
+  // Margem dos últimos 90 dias, para quando o período escolhido ainda não tem vendas.
+  const recent = useMonthlyGoal(layer).data;
   if (overview.isError) return <ErrorState error={overview.error} onRetry={() => void overview.refetch()} />;
   const o = overview.data;
   if (!o) {
@@ -172,43 +177,97 @@ function Indicators({ from, to, layer, compact = false }: { from: string; to: st
         signed
         estimated={estimatedOp}
         estimatedHint="Inclui energia e depreciação estimadas pelas horas de impressão (taxa combinada ou sem taxa no período)."
-        hint={margin.pct !== null ? `${formatPercent(margin.pct)} da receita líquida` : undefined}
+        hint={
+          margin.pct !== null
+            ? `${formatPercent(margin.pct)} da receita líquida`
+            : recent && recent.margin_source === 'REALIZADA_90D' && recent.margin_pct !== null
+              ? `Sem vendas no período · últimos 90 dias: ${formatPercent(recent.margin_pct)}`
+              : 'Sem vendas entregues no período'
+        }
         badge={o.flags.labor_not_valued && layer === 'full' ? <Badge tone="warning">trabalho não valorizado</Badge> : undefined}
       />
       {compact ? null : (
         <>
-          <Stat
-            label="Estoque pronto"
-            value={o.finished_stock.cost}
-            estimated
-            estimatedHint="Custo médio das peças livres (inclui operacional estimado)."
-            hint={
-        <>
-                {formatNumber(o.finished_stock.units, 0)} peça(s) · vale <Money value={o.finished_stock.sale_value} estimated hint="Preço de referência do canal padrão" />
-        </>
-            }
-          />
+          <StockStat />
           <Stat
             label="Margem potencial"
             value={o.potential.potential_margin}
             estimated
             estimatedHint="Saldo livre × preço de referência − custo − taxas, embalagem e impostos estimados (RN-14)."
-            hint={o.potential.variants_without_price > 0 ? `${o.potential.variants_without_price} variação(ões) sem preço` : 'Do estoque livre'}
-          />
-          <Stat
-            label="Investimento recuperado"
-            value={o.investment.recovered_pct}
-            format={(v) => (v === null || v === undefined ? '—' : formatPercent(v))}
             hint={
-        <>
-                de <Money value={o.investment.net_investment} /> investidos
-                {o.investment.months_to_recover ? ` · ~${o.investment.months_to_recover} meses para recuperar` : ''}
-        </>
+              toNumber(o.potential.units) === 0
+                ? 'Nenhuma peça pronta livre: as prontas estão reservadas para pedidos ou não há estoque'
+                : o.potential.variants_without_price > 0
+                  ? `${o.potential.variants_without_price} variação(ões) sem preço`
+                  : `Das ${formatNumber(o.potential.units, 0)} peça(s) livres, se vendidas pelo preço de referência`
             }
           />
+          <InvestmentStat investment={o.investment} />
         </>
       )}
     </section>
+  );
+}
+
+/** Valor de tudo o que está em estoque pelo custo médio, por tipo de item. */
+function StockStat() {
+  const stock = useStockValue();
+  const s = stock.data;
+  if (!s) return <Skeleton className="h-24" />;
+  const top = s.by_kind.slice(0, 3);
+  return (
+    <Stat
+      label="Estoque (valor total)"
+      value={s.total}
+      estimated
+      estimatedHint="Quantidade em estoque × custo médio de cada item (peças prontas incluem energia e depreciação estimadas)."
+      hint={
+        top.length === 0 ? (
+          'Estoque vazio'
+        ) : (
+          <>
+            {top.map((k, i) => (
+              <span key={k.kind}>
+                {i > 0 ? ' · ' : ''}
+                {KIND_LABELS[k.kind as ItemKind] ?? k.kind} {formatBRL(k.value)}
+              </span>
+            ))}
+            {toNumber(s.finished.units) > 0
+              ? ` · ${formatNumber(s.finished.units, 0)} peça(s) pronta(s), ${formatNumber(s.finished.free, 0)} livre(s)`
+              : ''}
+          </>
+        )
+      }
+    />
+  );
+}
+
+/**
+ * Quanto do investimento do dono já voltou como resultado. Antes de pagar qualquer
+ * parcela, a base é o que está comprometido nas compras pagas pelo dono.
+ */
+function InvestmentStat({ investment: inv }: { investment: Overview['investment'] }) {
+  const paid = toNumber(inv.net_investment);
+  const committed = toNumber(inv.owner_committed_total);
+  const base = paid > 0 ? paid : committed;
+  const pct = base > 0 ? toNumber(inv.accumulated_return) / base : null;
+  return (
+    <Stat
+      label="Investimento recuperado"
+      value={pct}
+      format={(v) => (v === null || v === undefined ? '—' : formatPercent(v))}
+      tone={pct !== null && pct < 0 ? 'negative' : 'default'}
+      hint={
+        base === 0 ? (
+          'Nenhum investimento do dono registrado'
+        ) : (
+          <>
+            Retorno <Money value={inv.accumulated_return} /> de <Money value={base} /> {paid > 0 ? 'investidos' : 'comprometidos em parcelas (nada pago ainda)'}
+            {inv.months_to_recover ? ` · ~${inv.months_to_recover} meses para recuperar` : ''}
+          </>
+        )
+      }
+    />
   );
 }
 

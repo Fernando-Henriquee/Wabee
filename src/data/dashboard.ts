@@ -16,6 +16,7 @@ import type {
   Overview,
   PeriodMetrics,
   ProductMix,
+  StockValue,
   SalesBucket,
   TopProduct,
   ValuePath,
@@ -85,4 +86,8 @@ export function useOrderBacklog(days = 14, enabled = true) {
 
 export function useOwnerWithdrawal(enabled = true) {
   return useAppQuery(['dashboard', 'owner-withdrawal'], () => rpc<OwnerWithdrawal>('owner_withdrawal'), { enabled });
+}
+
+export function useStockValue(enabled = true) {
+  return useAppQuery(['dashboard', 'stock-value'], () => rpc<StockValue>('stock_value'), { enabled });
 }
