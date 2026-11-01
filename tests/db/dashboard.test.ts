@@ -95,6 +95,79 @@ describe('Visão geral (US-8.1)', () => {
     expect(dre.lines.find((l) => l.key === 'receita_liquida')!.pct).toBe(1);
   });
 
+  it('meta do mês: despesas fixas ÷ margem de contribuição', async () => {
+    type Goal = {
+      margin_pct: number; margin_source: string; breakeven_revenue: number; target_revenue: number; revenue: number; result: number; remaining: number;
+      expenses: { basis: number; source: string; categories: Array<{ code: string; month: number }> };
+    };
+    const goal = (layer: string) => env.as(dono, (s) => s.rpc<Goal>('monthly_goal', { p_layer: layer }));
+    // Margem operacional 10,80 de 15 = 72%; despesas fixas = 30 (30% da internet).
+    let g = await goal('operational');
+    expect(g.expenses.source).toBe('MES');
+    expect(n(g.expenses.basis)).toBe(30);
+    expect(g.expenses.categories[0]!.code).toBe('4.3');
+    expect(g.margin_source).toBe('REALIZADA_90D');
+    expect(n(g.margin_pct)).toBe(0.72);
+    expect(n(g.breakeven_revenue)).toBe(41.67);
+    expect(n(g.target_revenue)).toBe(41.67);
+    expect(n(g.revenue)).toBe(15);
+    expect(n(g.remaining)).toBe(26.67);
+    expect(n(g.result)).toBe(-19.2);
+    // Valor manual e lucro desejado: (100 + 44) ÷ 72% = 200; na margem direta (80%) o equilíbrio é 125.
+    await env.as(dono, (s) => s.rpc('save_settings', { p_settings: { monthly_fixed_expenses: '100', monthly_profit_target: '44' } }));
+    g = await goal('operational');
+    expect(g.expenses.source).toBe('MANUAL');
+    expect(n(g.target_revenue)).toBe(200);
+    expect(n((await goal('direct')).breakeven_revenue)).toBe(125);
+    await env.as(dono, (s) => s.rpc('save_settings', { p_settings: { monthly_fixed_expenses: null, monthly_profit_target: '0' } }));
+    expect((await goal('operational')).expenses.source).toBe('MES');
+    await expect(env.as(producao, (s) => s.rpc('monthly_goal', { p_layer: 'operational' }))).rejects.toThrow(/permissão/);
+  });
+
+  it('análises extras: comparação, mix, entregas, carteira, retirada, alertas e resumo', async () => {
+    const d = await today();
+    const from = `${d.slice(0, 7)}-01`;
+    type Metrics = { net_revenue: number; orders: number; units: number; avg_ticket: number; fixed_expenses: number; result: number };
+    const cmp = await env.as(dono, (s) => s.rpc<{ a: Metrics; b: Metrics }>('period_compare', { p_a_from: from, p_a_to: d, p_b_from: '2026-01-01', p_b_to: '2026-01-31' }));
+    expect(n(cmp.a.net_revenue)).toBe(15);
+    expect(cmp.a.orders).toBe(1);
+    expect(n(cmp.a.units)).toBe(3);
+    expect(n(cmp.a.avg_ticket)).toBe(15);
+    expect(n(cmp.a.fixed_expenses)).toBe(30);
+    expect(n(cmp.a.result)).toBe(-19.2);
+    expect(n(cmp.b.net_revenue)).toBe(0);
+
+    type Mix = { products: Array<{ name: string; abc: string; margin: number; is_custom: boolean }>; split: { custom: { revenue: number }; catalog: { revenue: number } } };
+    const mix = await env.as(dono, (s) => s.rpc<Mix>('product_mix', { p_from: from, p_to: d }));
+    expect(mix.products).toHaveLength(1);
+    expect(mix.products[0]).toMatchObject({ abc: 'A', is_custom: false });
+    expect(n(mix.products[0]!.margin)).toBe(10.8);
+    expect(n(mix.split.catalog.revenue)).toBe(15);
+    expect(n(mix.split.custom.revenue)).toBe(0);
+
+    const stats = await env.as(dono, (s) => s.rpc<{ kinds: Record<string, { orders: number }> }>('delivery_stats', { p_from: from, p_to: d }));
+    expect(stats.kinds.PRONTA_ENTREGA!.orders).toBe(1);
+
+    const backlog = await env.as(dono, (s) => s.rpc<{ printers: number; capacity_hours: number; summary: { orders: number } }>('order_backlog', { p_days: 14 }));
+    expect(backlog.summary.orders).toBe(0);
+    expect(n(backlog.capacity_hours)).toBe(backlog.printers * 10 * 14);
+
+    // Caixa 85 − reserva de 1 mês de despesas fixas (30) = 55; sem lucro no mês anterior, nada sugerido.
+    const w = await env.as(dono, (s) => s.rpc<{ cash: number; reserve: number; cash_room: number; suggested: number }>('owner_withdrawal', {}));
+    expect(n(w.cash)).toBe(85);
+    expect(n(w.reserve)).toBe(30);
+    expect(n(w.cash_room)).toBe(55);
+    expect(n(w.suggested)).toBe(0);
+
+    const insights = await env.as(dono, (s) => s.rpc<Array<{ kind: string }>>('dashboard_insights', {}));
+    expect(insights.some((a) => a.kind === 'margin_low')).toBe(false);
+
+    const week = await env.as(dono, (s) => s.rpc<{ current: Metrics; best_product: { name: string } }>('weekly_summary', {}));
+    expect(n(week.current.net_revenue)).toBe(15);
+    expect(week.best_product.name).toContain('Abelha');
+    await expect(env.as(producao, (s) => s.rpc('owner_withdrawal', {}))).rejects.toThrow(/permissão/);
+  });
+
   it('caixa projetado separa as parcelas pagas pelo dono (US-7.10)', async () => {
     const proj = await env.as(dono, (s) => s.rpc<{ months: Array<{ outflows: number; owner_paid: number }> }>('cash_projection', { p_months: 6 }));
     expect(proj.months).toHaveLength(6);

@@ -84,6 +84,11 @@ export interface SettingsInput {
   go_live_date?: string | null;
   filament_reference_cost_g?: string;
   default_order_packaging_item_id?: number | null;
+  /** Nulo = estimar pelos lançamentos. */
+  monthly_fixed_expenses?: string | null;
+  monthly_profit_target?: string;
+  printer_hours_per_day?: string;
+  cash_reserve_months?: string;
 }
 
 export type SettingsRow = AppSettings & { updated_at: string };

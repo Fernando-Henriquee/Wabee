@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowRight, CircleAlert, Info, Printer, Sparkles } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CircleAlert, Info, Printer, Settings2, Sparkles, Target } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { ColumnChart, COST_LAYERS } from '@/components/charts/chart';
@@ -12,9 +12,13 @@ import { Card, CardHeader } from '@/components/ui/card';
 import { ErrorState, Skeleton } from '@/components/ui/states';
 import {
   type DashboardAlert,
+  type GoalExpenseSource,
   type MarginBlock,
+  type MonthlyGoal,
   useAlerts,
+  useInsights,
   useCashProjection,
+  useMonthlyGoal,
   useNowPrinting,
   useOverview,
   useSalesSeries,
@@ -27,6 +31,9 @@ import { cn } from '@/lib/cn';
 import { diffInDays, formatDateBR, formatDateTimeBR } from '@/lib/dates';
 import { formatBRL, formatMinutes, formatNumber, formatPercent, toNumber } from '@/lib/money';
 import { pendingStepsFromState } from '@/features/onboarding/onboarding-logic';
+import { BacklogBlock, CompareBlock, DeliveryBlock, PriceSimulator, ProductMixBlock, WeeklySummaryBlock, WithdrawalBlock } from './insights';
+import { CustomizeDialog } from './layout';
+import { BLOCKS, type BlockId, useLayoutPrefs, visibleBlocks } from './layout-prefs';
 
 const MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
@@ -47,9 +54,13 @@ const SEVERITY: Record<DashboardAlert['severity'], { icon: ReactNode; className:
   info: { icon: <Info className="size-4" aria-hidden />, className: 'border-info/25 bg-info-soft text-info' },
 };
 
-function Alerts() {
-  const alerts = useAlerts();
-  if (!alerts.data || alerts.data.length === 0) return null;
+function Alerts({ finance }: { finance: boolean }) {
+  const base = useAlerts();
+  const insights = useInsights(finance);
+  const all = [...(base.data ?? []), ...(insights.data ?? [])];
+  const order = { danger: 0, warning: 1, info: 2 };
+  const alerts = { data: all.sort((a, b) => order[a.severity] - order[b.severity]) };
+  if (alerts.data.length === 0) return null;
   return (
     <section aria-label="Alertas" className="mb-5 space-y-2">
       {alerts.data.slice(0, 8).map((alert, index) => {
@@ -117,14 +128,14 @@ function OnboardingCallout() {
   );
 }
 
-function Indicators({ from, to, layer }: { from: string; to: string; layer: CostLayerView }) {
+function Indicators({ from, to, layer, compact = false }: { from: string; to: string; layer: CostLayerView; compact?: boolean }) {
   const overview = useOverview(from, to);
   if (overview.isError) return <ErrorState error={overview.error} onRetry={() => void overview.refetch()} />;
   const o = overview.data;
   if (!o) {
     return (
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {Array.from({ length: 8 }, (_, i) => (
+        {Array.from({ length: compact ? 4 : 8 }, (_, i) => (
           <Skeleton key={i} className="h-24" />
         ))}
       </div>
@@ -136,16 +147,18 @@ function Indicators({ from, to, layer }: { from: string; to: string; layer: Cost
   return (
     <section aria-label="Indicadores" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <Stat label="Caixa disponível" value={o.cash_available} tone={toNumber(o.cash_available) < 0 ? 'negative' : 'default'} hint="Contas da empresa" />
-      <Stat
-        label="A pagar em 30 dias"
-        value={toNumber(o.payable_30d.company) + toNumber(o.payable_30d.owner)}
-        hint={
-          <>
-            Empresa <Money value={o.payable_30d.company} /> · Dono <Money value={o.payable_30d.owner} />
-          </>
-        }
-        tone={toNumber(o.payable_30d.overdue) > 0 ? 'warning' : 'default'}
-      />
+      {compact ? null : (
+        <Stat
+          label="A pagar em 30 dias"
+          value={toNumber(o.payable_30d.company) + toNumber(o.payable_30d.owner)}
+          hint={
+            <>
+              Empresa <Money value={o.payable_30d.company} /> · Dono <Money value={o.payable_30d.owner} />
+            </>
+          }
+          tone={toNumber(o.payable_30d.overdue) > 0 ? 'warning' : 'default'}
+        />
+      )}
       <Stat
         label="A receber"
         value={o.receivable.open}
@@ -162,36 +175,233 @@ function Indicators({ from, to, layer }: { from: string; to: string; layer: Cost
         hint={margin.pct !== null ? `${formatPercent(margin.pct)} da receita líquida` : undefined}
         badge={o.flags.labor_not_valued && layer === 'full' ? <Badge tone="warning">trabalho não valorizado</Badge> : undefined}
       />
-      <Stat
-        label="Estoque pronto"
-        value={o.finished_stock.cost}
-        estimated
-        estimatedHint="Custo médio das peças livres (inclui operacional estimado)."
-        hint={
-          <>
-            {formatNumber(o.finished_stock.units, 0)} peça(s) · vale <Money value={o.finished_stock.sale_value} estimated hint="Preço de referência do canal padrão" />
-          </>
-        }
-      />
-      <Stat
-        label="Margem potencial"
-        value={o.potential.potential_margin}
-        estimated
-        estimatedHint="Saldo livre × preço de referência − custo − taxas, embalagem e impostos estimados (RN-14)."
-        hint={o.potential.variants_without_price > 0 ? `${o.potential.variants_without_price} variação(ões) sem preço` : 'Do estoque livre'}
-      />
-      <Stat
-        label="Investimento recuperado"
-        value={o.investment.recovered_pct}
-        format={(v) => (v === null || v === undefined ? '—' : formatPercent(v))}
-        hint={
-          <>
-            de <Money value={o.investment.net_investment} /> investidos
-            {o.investment.months_to_recover ? ` · ~${o.investment.months_to_recover} meses para recuperar` : ''}
-          </>
-        }
-      />
+      {compact ? null : (
+        <>
+          <Stat
+            label="Estoque pronto"
+            value={o.finished_stock.cost}
+            estimated
+            estimatedHint="Custo médio das peças livres (inclui operacional estimado)."
+            hint={
+        <>
+                {formatNumber(o.finished_stock.units, 0)} peça(s) · vale <Money value={o.finished_stock.sale_value} estimated hint="Preço de referência do canal padrão" />
+        </>
+            }
+          />
+          <Stat
+            label="Margem potencial"
+            value={o.potential.potential_margin}
+            estimated
+            estimatedHint="Saldo livre × preço de referência − custo − taxas, embalagem e impostos estimados (RN-14)."
+            hint={o.potential.variants_without_price > 0 ? `${o.potential.variants_without_price} variação(ões) sem preço` : 'Do estoque livre'}
+          />
+          <Stat
+            label="Investimento recuperado"
+            value={o.investment.recovered_pct}
+            format={(v) => (v === null || v === undefined ? '—' : formatPercent(v))}
+            hint={
+        <>
+                de <Money value={o.investment.net_investment} /> investidos
+                {o.investment.months_to_recover ? ` · ~${o.investment.months_to_recover} meses para recuperar` : ''}
+        </>
+            }
+          />
+        </>
+      )}
     </section>
+  );
+}
+
+const MONTH_NAMES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+
+const EXPENSE_SOURCE: Record<GoalExpenseSource, string> = {
+  MANUAL: 'valor previsto nas configurações',
+  MEDIA_3M: 'média dos meses anteriores',
+  MES: 'lançadas neste mês',
+  NENHUMA: 'nenhuma despesa lançada',
+};
+
+const LAYER_NAMES: Record<CostLayerView, string> = { direct: 'direta', operational: 'operacional', full: 'completa' };
+
+const STATUS_TONE = { success: 'text-success', warning: 'text-warning', danger: 'text-danger', muted: 'text-muted' };
+
+function goalStatus(g: MonthlyGoal): { text: string; tone: keyof typeof STATUS_TONE } {
+  const target = toNumber(g.target_revenue);
+  const revenue = toNumber(g.revenue);
+  if (revenue >= target) return { text: `Meta batida: ${formatBRL(revenue - target)} acima.`, tone: 'success' };
+  if (g.projection === null || g.days_elapsed < 3) return { text: 'Ainda é cedo para projetar o mês.', tone: 'muted' };
+  const projection = toNumber(g.projection);
+  if (projection >= target) return { text: `No ritmo atual o mês fecha em ${formatBRL(projection)}: bate a meta.`, tone: 'success' };
+  const breakeven = toNumber(g.breakeven_revenue);
+  if (projection >= breakeven) {
+    return { text: `No ritmo atual o mês fecha em ${formatBRL(projection)}: paga as despesas, mas fica ${formatBRL(target - projection)} abaixo da meta de lucro.`, tone: 'warning' };
+  }
+  return { text: `No ritmo atual o mês fecha em ${formatBRL(projection)}: faltariam ${formatBRL(breakeven - projection)} para pagar as despesas.`, tone: 'danger' };
+}
+
+/** Meta do mês: faturamento necessário para pagar as despesas fixas (e o lucro desejado). */
+function GoalBlock({ layer }: { layer: CostLayerView }) {
+  const query = useMonthlyGoal(layer);
+  const g = query.data;
+  if (query.isError) return <ErrorState error={query.error} onRetry={() => void query.refetch()} />;
+  if (!g) return <Skeleton className="h-56" />;
+  const month = MONTH_NAMES[Number(g.month.slice(5, 7)) - 1];
+  const basis = toNumber(g.expenses.basis);
+  const profit = toNumber(g.profit_target);
+  const pct = g.margin_pct === null ? null : toNumber(g.margin_pct);
+  const target = toNumber(g.target_revenue);
+  const breakeven = toNumber(g.breakeven_revenue);
+  const revenue = toNumber(g.revenue);
+  const scale = Math.max(target, revenue, 1);
+  const expectedToday = g.days > 0 ? (target * g.days_elapsed) / g.days : 0;
+  const status = g.target_revenue !== null && basis + profit > 0 ? goalStatus(g) : null;
+  return (
+    <Card>
+      <CardHeader
+        title={`Meta de ${month}`}
+        description={
+          pct !== null && pct > 0
+            ? `Quanto faturar para pagar as despesas fixas${profit > 0 ? ` e lucrar ${formatBRL(profit)}` : ''}, com margem ${LAYER_NAMES[g.layer]} de ${formatPercent(pct)}`
+            : 'Quanto faturar para pagar as despesas fixas'
+        }
+        actions={
+          <Button asChild variant="outline" size="sm">
+            <Link to="/configuracoes/empresa">
+              <Settings2 /> Ajustar
+            </Link>
+          </Button>
+        }
+      />
+      <div className="space-y-4 p-4">
+        {pct === null || pct <= 0 ? (
+          <p className="flex items-start gap-2 rounded-lg border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger">
+            <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+            A margem {LAYER_NAMES[g.layer]} dos últimos 90 dias está em {pct === null ? '—' : formatPercent(pct)}: nenhum faturamento paga as despesas. Revise preços e custos.
+          </p>
+        ) : basis + profit <= 0 ? (
+          <p className="flex items-start gap-2 text-sm text-muted">
+            <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
+            <span>
+              Nenhuma despesa fixa lançada ainda. Lance as despesas do mês (internet, DAS, assinaturas…) em{' '}
+              <Link to="/financeiro/despesas" className="font-medium text-ink underline decoration-accent decoration-2 underline-offset-4">
+                Financeiro → Despesas
+              </Link>{' '}
+              ou informe o valor previsto em Ajustar.
+            </span>
+          </p>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-end justify-between gap-2">
+              <div>
+                <p className="text-xs font-medium text-muted">Faturado no mês</p>
+                <p className="num text-2xl font-semibold leading-tight">
+                  {formatBRL(revenue)} <span className="text-base font-normal text-muted">de {formatBRL(target)}</span>
+                </p>
+              </div>
+              <p className="num flex items-center gap-1.5 text-lg font-semibold">
+                <Target className="size-4 text-muted" aria-hidden />
+                {formatPercent(target > 0 ? revenue / target : 0)}
+              </p>
+            </div>
+            <div className="relative" aria-hidden>
+              <div className="h-3 overflow-hidden rounded-full bg-subtle">
+                <div
+                  className={cn('h-full rounded-full', revenue >= target ? 'bg-success' : 'bg-accent')}
+                  style={{ width: `${Math.min(100, (revenue / scale) * 100)}%` }}
+                />
+              </div>
+              {g.days_left > 0 ? (
+                <span className="absolute -top-1 h-5 w-0.5 rounded bg-ink" style={{ left: `${Math.min(100, (expectedToday / scale) * 100)}%` }} />
+              ) : null}
+              {profit > 0 ? <span className="absolute -top-1 h-5 w-0.5 rounded bg-danger" style={{ left: `${Math.min(100, (breakeven / scale) * 100)}%` }} /> : null}
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+              {g.days_left > 0 ? (
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block h-3 w-0.5 rounded bg-ink" /> Esperado até hoje: {formatBRL(expectedToday)}
+                </span>
+              ) : null}
+              {profit > 0 ? (
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block h-3 w-0.5 rounded bg-danger" /> Paga as despesas: {formatBRL(breakeven)}
+                </span>
+              ) : null}
+            </div>
+            {status ? <p className={cn('text-sm font-medium', STATUS_TONE[status.tone])}>{status.text}</p> : null}
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <Stat
+                label="Falta faturar"
+                value={g.remaining ?? 0}
+                tone={toNumber(g.remaining) > 0 ? 'default' : 'positive'}
+                hint={g.days_left > 0 ? `${g.days_left} dia(s) até o fim do mês` : 'Mês encerrado'}
+              />
+              <Stat label="Por dia" value={g.per_day ?? 0} hint="Para bater a meta, contando hoje" />
+              <Stat label="Resultado do mês" value={g.result} signed hint="Margem das vendas − despesas fixas já lançadas" />
+              <Stat
+                label="Pedidos que faltam"
+                value={g.orders_needed ?? 0}
+                format={(v) => (g.avg_ticket === null ? '—' : formatNumber(v, 0))}
+                hint={g.avg_ticket === null ? 'Sem vendas nos últimos 90 dias' : <>Ticket médio <Money value={g.avg_ticket} /> (90 dias)</>}
+              />
+            </div>
+            <PriceSimulator marginPct={pct} needed={basis + profit} />
+          </>
+        )}
+        <details className="rounded-lg border border-line text-sm">
+          <summary className="cursor-pointer select-none px-3 py-2 font-medium">Como a meta é calculada</summary>
+          <div className="space-y-3 border-t border-line px-3 py-3">
+            <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1">
+              <dt className="text-muted">Despesas fixas ({EXPENSE_SOURCE[g.expenses.source]})</dt>
+              <dd className="num text-right">{formatBRL(basis)}</dd>
+              {profit > 0 ? (
+                <>
+                  <dt className="text-muted">+ Lucro desejado</dt>
+                  <dd className="num text-right">{formatBRL(profit)}</dd>
+                </>
+              ) : null}
+              <dt className="text-muted">
+                ÷ Margem {LAYER_NAMES[g.layer]} ({g.margin_source === 'REALIZADA_90D' ? 'realizada nos últimos 90 dias' : 'margem alvo, sem vendas recentes'})
+              </dt>
+              <dd className="num text-right">{pct === null ? '—' : formatPercent(pct)}</dd>
+              <dt className="font-medium">= Meta de faturamento</dt>
+              <dd className="num text-right font-semibold">{g.target_revenue === null ? '—' : formatBRL(target)}</dd>
+            </dl>
+            <p className="text-xs text-muted">
+              De cada {formatBRL(100)} vendidos, sobram {pct === null ? '—' : formatBRL(100 * Math.max(pct, 0))} depois de material, taxas, embalagem e impostos
+              {g.layer === 'direct' ? '' : ', energia e depreciação'}
+              {g.layer === 'full' ? ' e trabalho' : ''}: é isso que paga as despesas fixas. Troque a camada no topo da página para ver a meta em outra margem.
+            </p>
+            {g.expenses.categories.length > 0 ? (
+              <table className="w-full text-xs">
+                <thead className="text-muted">
+                  <tr>
+                    <th className="py-1 text-left font-medium">Despesa</th>
+                    <th className="py-1 text-right font-medium">Este mês</th>
+                    {g.expenses.avg_months > 0 ? (
+                      <th className="py-1 text-right font-medium">
+                        Média {g.expenses.avg_months} {g.expenses.avg_months === 1 ? 'mês' : 'meses'}
+                      </th>
+                    ) : null}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {g.expenses.categories.map((c) => (
+                    <tr key={c.code}>
+                      <td className="py-1">{c.name}</td>
+                      <td className="num py-1 text-right">{formatBRL(c.month)}</td>
+                      {g.expenses.avg_months > 0 ? <td className="num py-1 text-right">{c.avg_3m === null ? '—' : formatBRL(c.avg_3m)}</td> : null}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : null}
+            {toNumber(g.expenses.das_pending) > 0 ? (
+              <p className="text-xs text-muted">Inclui o DAS do MEI ({formatBRL(g.expenses.das_pending)}) ainda não lançado neste mês.</p>
+            ) : null}
+          </div>
+        </details>
+      </div>
+    </Card>
   );
 }
 
@@ -206,7 +416,7 @@ const STAGES: Array<{ key: 'production' | 'stock' | 'reserved' | 'to_receive' | 
 function ValuePathBlock({ from, to }: { from: string; to: string }) {
   const path = useValuePath(from, to);
   return (
-    <Card className="mb-5">
+    <Card>
       <CardHeader title="Caminho do valor" description="Onde está o valor do que a Wabee produz: cada peça aparece em uma única etapa." />
       {path.isError ? (
         <div className="p-4">
@@ -423,28 +633,46 @@ export function DashboardPage() {
   const { can, settings } = useMember();
   const [range, setRange] = useDateRange('mes');
   const [layer, setLayer] = useCostLayer();
+  const [prefs, setPrefs] = useLayoutPrefs();
   const finance = can('costs');
+  const render: Record<BlockId, () => ReactNode> = {
+    resumo: () => <WeeklySummaryBlock />,
+    meta: () => <GoalBlock layer={layer} />,
+    indicadores: () => <Indicators from={range.from} to={range.to} layer={layer} compact={prefs.compact} />,
+    caminho: () => <ValuePathBlock from={range.from} to={range.to} />,
+    impressora: () => <NowPrintingBlock />,
+    carteira: () => <BacklogBlock />,
+    retirada: () => <WithdrawalBlock />,
+    produtos: () => <ProductMixBlock from={range.from} to={range.to} />,
+    entregas: () => <DeliveryBlock from={range.from} to={range.to} />,
+    comparar: () => <CompareBlock range={range} />,
+    graficos: () => <Charts from={range.from} to={range.to} layer={layer} />,
+  };
   return (
     <Page>
       <PageHeader
         title="Visão geral"
         description={settings.company_name}
-        actions={finance ? <CostLayerSelector value={layer} onChange={setLayer} /> : undefined}
+        actions={
+          finance ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <CostLayerSelector value={layer} onChange={setLayer} />
+              <CustomizeDialog prefs={prefs} onChange={setPrefs} />
+            </div>
+          ) : undefined
+        }
       />
       {finance ? <PeriodPresets range={range} onChange={setRange} className="mb-5" /> : null}
       <OnboardingCallout />
-      <Alerts />
+      <Alerts finance={finance} />
       {finance ? (
-        <>
-          <Indicators from={range.from} to={range.to} layer={layer} />
-          <div className="mt-5">
-            <ValuePathBlock from={range.from} to={range.to} />
-          </div>
-          <div className="mb-5">
-            <NowPrintingBlock />
-          </div>
-          <Charts from={range.from} to={range.to} layer={layer} />
-        </>
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+          {visibleBlocks(prefs).map((id) => (
+            <div key={id} className={cn('min-w-0', !(BLOCKS.find((b) => b.id === id)?.half && !prefs.compact) && 'xl:col-span-2')}>
+              {render[id]()}
+            </div>
+          ))}
+        </div>
       ) : (
         <NowPrintingBlock />
       )}

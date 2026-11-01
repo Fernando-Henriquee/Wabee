@@ -117,3 +117,122 @@ export interface TopProduct {
   hours_per_unit: number | null;
   mhm: number | null;
 }
+
+export type GoalExpenseSource = 'MANUAL' | 'MEDIA_3M' | 'MES' | 'NENHUMA';
+
+/** Meta do mês: quanto faturar para pagar as despesas fixas (e o lucro desejado). */
+export interface MonthlyGoal {
+  month: string;
+  layer: 'direct' | 'operational' | 'full';
+  days: number;
+  days_elapsed: number;
+  days_left: number;
+  expenses: {
+    basis: number;
+    source: GoalExpenseSource;
+    month: number;
+    das_pending: number;
+    avg_3m: number | null;
+    avg_months: number;
+    manual: number | null;
+    categories: Array<{ code: string; name: string; month: number; avg_3m: number | null }>;
+  };
+  margin_pct: number | null;
+  margin_source: 'REALIZADA_90D' | 'ALVO';
+  profit_target: number;
+  breakeven_revenue: number | null;
+  target_revenue: number | null;
+  revenue: number;
+  margin: number;
+  result: number;
+  remaining: number | null;
+  per_day: number | null;
+  projection: number | null;
+  avg_ticket: number | null;
+  orders_needed: number | null;
+}
+
+/** Números de um período (comparação lado a lado e resumo da semana). */
+export interface PeriodMetrics {
+  from: string;
+  to: string;
+  net_revenue: number;
+  margin_direct: number;
+  margin_operational: number;
+  margin_full: number;
+  margin_operational_pct: number | null;
+  orders: number;
+  units: number;
+  avg_ticket: number | null;
+  custom_revenue: number;
+  fixed_expenses: number;
+  result: number;
+  machine_hours: number;
+  pieces_produced: number;
+  failed_jobs: number;
+  new_customers: number;
+}
+
+export interface WeeklySummary {
+  current: PeriodMetrics;
+  previous: PeriodMetrics;
+  best_product: { name: string; units: number; revenue: number } | null;
+  best_channel: { name: string; revenue: number } | null;
+}
+
+export interface MixSplit {
+  revenue: number;
+  margin: number;
+  units: number;
+  orders: number;
+}
+
+export interface ProductMix {
+  products: Array<{ variant_id: number; name: string; is_custom: boolean; units: number; revenue: number; margin: number; share: number | null; abc: 'A' | 'B' | 'C' }>;
+  split: { custom: MixSplit; catalog: MixSplit };
+  colors: Array<{ color_name: string; color_hex: string; material: string; grams: number; units: number }>;
+}
+
+export interface DeliveryStats {
+  kinds: Partial<Record<'PRONTA_ENTREGA' | 'ENCOMENDA', { orders: number; avg_days: number | null; on_time: number; with_due: number }>>;
+  late: Array<{ id: number; number: string; customer: string | null; days_late: number }>;
+}
+
+export interface BacklogOrder {
+  id: number;
+  number: string;
+  kind: 'PRONTA_ENTREGA' | 'ENCOMENDA';
+  status: string;
+  customer: string | null;
+  due_date: string | null;
+  total: number;
+  received: number;
+  to_receive: number;
+  hours: number;
+  cumulative_hours: number;
+  hours_until_due: number | null;
+  at_risk: boolean;
+}
+
+export interface OrderBacklog {
+  days: number;
+  printers: number;
+  hours_per_day: number;
+  capacity_hours: number;
+  demand_hours: number;
+  stock_job_hours: number;
+  summary: { orders: number; value: number; received: number; to_receive: number; order_hours: number; at_risk: number };
+  list: BacklogOrder[];
+}
+
+export interface OwnerWithdrawal {
+  cash: number;
+  payables_30d: number;
+  reserve: number;
+  reserve_months: number;
+  cash_room: number;
+  previous_month: string;
+  previous_result: number;
+  month_result: number;
+  suggested: number;
+}

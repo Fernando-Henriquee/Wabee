@@ -33,6 +33,10 @@ interface CompanyForm {
   sales_tax_pct: string | null;
   mei_monthly_das: string | null;
   margin_target_pct: string | null;
+  monthly_fixed_expenses: string | null;
+  monthly_profit_target: string | null;
+  printer_hours_per_day: string | null;
+  cash_reserve_months: string | null;
   default_channel_id: string;
   default_order_packaging_item_id: string;
   allow_negative_stock: boolean;
@@ -53,6 +57,10 @@ function formFrom(s: AppSettings): CompanyForm {
     sales_tax_pct: str(s.sales_tax_pct),
     mei_monthly_das: str(s.mei_monthly_das),
     margin_target_pct: str(s.margin_target_pct),
+    monthly_fixed_expenses: str(s.monthly_fixed_expenses),
+    monthly_profit_target: str(s.monthly_profit_target),
+    printer_hours_per_day: str(s.printer_hours_per_day),
+    cash_reserve_months: str(s.cash_reserve_months),
     default_channel_id: s.default_channel_id ? String(s.default_channel_id) : '',
     default_order_packaging_item_id: s.default_order_packaging_item_id ? String(s.default_order_packaging_item_id) : '',
     allow_negative_stock: s.allow_negative_stock,
@@ -98,6 +106,11 @@ function CompanyFormView({ initial }: { initial: CompanyForm }) {
     if (form.tax_regime === 'SIMPLES' && (toNumber(form.sales_tax_pct) < 0 || toNumber(form.sales_tax_pct) >= 1)) return setError('O imposto sobre vendas precisa ficar entre 0% e 99,99%.');
     const days = Math.round(toNumber(form.coverage_alert_days));
     if (form.coverage_alert_days === null || days < 0 || days > 365) return setError('O alerta de cobertura precisa ficar entre 0 e 365 dias.');
+    if (toNumber(form.monthly_fixed_expenses) < 0 || toNumber(form.monthly_profit_target) < 0) return setError('Despesas fixas e lucro desejado não podem ser negativos.');
+    const hours = toNumber(form.printer_hours_per_day);
+    if (form.printer_hours_per_day === null || hours <= 0 || hours > 24) return setError('As horas de impressão por dia precisam ficar entre 0 e 24.');
+    const reserve = toNumber(form.cash_reserve_months);
+    if (form.cash_reserve_months === null || reserve < 0 || reserve > 24) return setError('A reserva de caixa precisa ficar entre 0 e 24 meses.');
     if (form.filament_reference_cost_g === null || toNumber(form.filament_reference_cost_g) < 0) return setError('Informe o custo de referência do filamento.');
     const payload: SettingsInput = {
       company_name: name,
@@ -105,6 +118,10 @@ function CompanyFormView({ initial }: { initial: CompanyForm }) {
       go_live_date: form.go_live_date || null,
       tax_regime: form.tax_regime,
       margin_target_pct: form.margin_target_pct,
+      monthly_fixed_expenses: form.monthly_fixed_expenses,
+      monthly_profit_target: form.monthly_profit_target ?? '0',
+      printer_hours_per_day: form.printer_hours_per_day,
+      cash_reserve_months: form.cash_reserve_months,
       allow_negative_stock: form.allow_negative_stock,
       absorb_scrap_cost: form.absorb_scrap_cost,
       coverage_alert_days: days,
@@ -226,6 +243,24 @@ function CompanyFormView({ initial }: { initial: CompanyForm }) {
                 </option>
               ))}
             </Select>
+          </Field>
+        </Section>
+
+        <Section title="Metas e capacidade" description="Usados na Visão geral: meta de faturamento, quanto você pode retirar e capacidade das impressoras.">
+          <Field
+            label="Despesas fixas por mês"
+            hint="Opcional. Em branco, a meta usa as despesas lançadas no Financeiro (o maior entre o mês atual e a média dos 3 meses anteriores). Preencha no começo, quando ainda não há histórico."
+          >
+            <MoneyInput value={form.monthly_fixed_expenses} onValueChange={(v) => set('monthly_fixed_expenses', v)} placeholder="Automático" />
+          </Field>
+          <Field label="Lucro desejado por mês" hint="Somado às despesas fixas: a meta passa a ser pagar as despesas e ainda sobrar este valor.">
+            <MoneyInput value={form.monthly_profit_target} onValueChange={(v) => set('monthly_profit_target', v)} />
+          </Field>
+          <Field label="Reserva de caixa" hint="Meses de despesas fixas que ficam no caixa antes de sugerir retirada ao dono.">
+            <DecimalInput decimals={1} suffix="meses" value={form.cash_reserve_months} onValueChange={(v) => set('cash_reserve_months', v)} />
+          </Field>
+          <Field label="Horas de impressão por dia" hint="Quanto cada impressora ativa costuma imprimir por dia. Usado na capacidade × demanda da Visão geral.">
+            <DecimalInput decimals={1} suffix="h/dia" value={form.printer_hours_per_day} onValueChange={(v) => set('printer_hours_per_day', v)} />
           </Field>
         </Section>
 

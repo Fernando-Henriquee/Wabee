@@ -35,6 +35,11 @@ export interface AppSettings {
   go_live_date: string | null;
   filament_reference_cost_g: number;
   default_order_packaging_item_id: number | null;
+  /** Despesas fixas mensais previstas para a meta (nulo = estimar pelos lançamentos). */
+  monthly_fixed_expenses: number | null;
+  monthly_profit_target: number;
+  printer_hours_per_day: number;
+  cash_reserve_months: number;
   onboarding_state: OnboardingState;
 }
 
