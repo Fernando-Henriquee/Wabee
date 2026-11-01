@@ -120,7 +120,7 @@ export interface TopProduct {
 
 export type GoalExpenseSource = 'MANUAL' | 'MEDIA_3M' | 'MES' | 'NENHUMA';
 
-/** Meta do mês: quanto faturar para pagar as despesas fixas (e o lucro desejado). */
+/** Meta do mês: quanto faturar para pagar as contas que vencem no mês (e o lucro desejado). */
 export interface MonthlyGoal {
   month: string;
   layer: 'direct' | 'operational' | 'full';
@@ -135,6 +135,9 @@ export interface MonthlyGoal {
     avg_3m: number | null;
     avg_months: number;
     manual: number | null;
+    /** Contas que vencem no mês (base da meta), uma por conta a pagar. */
+    bills: Array<{ description: string; category: string; payer: 'EMPRESA' | 'DONO'; amount: number; paid: boolean; installment: string }>;
+    /** Despesas do DRE por categoria (competência), para o alerta de despesa acima da média. */
     categories: Array<{ code: string; name: string; month: number; avg_3m: number | null }>;
   };
   margin_pct: number | null;

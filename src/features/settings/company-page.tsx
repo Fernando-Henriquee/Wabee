@@ -106,7 +106,7 @@ function CompanyFormView({ initial }: { initial: CompanyForm }) {
     if (form.tax_regime === 'SIMPLES' && (toNumber(form.sales_tax_pct) < 0 || toNumber(form.sales_tax_pct) >= 1)) return setError('O imposto sobre vendas precisa ficar entre 0% e 99,99%.');
     const days = Math.round(toNumber(form.coverage_alert_days));
     if (form.coverage_alert_days === null || days < 0 || days > 365) return setError('O alerta de cobertura precisa ficar entre 0 e 365 dias.');
-    if (toNumber(form.monthly_fixed_expenses) < 0 || toNumber(form.monthly_profit_target) < 0) return setError('Despesas fixas e lucro desejado não podem ser negativos.');
+    if (toNumber(form.monthly_fixed_expenses) < 0 || toNumber(form.monthly_profit_target) < 0) return setError('Contas fixas e lucro desejado não podem ser negativos.');
     const hours = toNumber(form.printer_hours_per_day);
     if (form.printer_hours_per_day === null || hours <= 0 || hours > 24) return setError('As horas de impressão por dia precisam ficar entre 0 e 24.');
     const reserve = toNumber(form.cash_reserve_months);
@@ -248,15 +248,15 @@ function CompanyFormView({ initial }: { initial: CompanyForm }) {
 
         <Section title="Metas e capacidade" description="Usados na Visão geral: meta de faturamento, quanto você pode retirar e capacidade das impressoras.">
           <Field
-            label="Despesas fixas por mês"
-            hint="Opcional. Em branco, a meta usa as despesas lançadas no Financeiro (o maior entre o mês atual e a média dos 3 meses anteriores). Preencha no começo, quando ainda não há histórico."
+            label="Contas fixas por mês"
+            hint="Opcional. Em branco, a meta usa as parcelas e contas a pagar que vencem no mês (pagas pela empresa ou por você), mais o DAS. Preencha só se quiser fixar um valor."
           >
             <MoneyInput value={form.monthly_fixed_expenses} onValueChange={(v) => set('monthly_fixed_expenses', v)} placeholder="Automático" />
           </Field>
-          <Field label="Lucro desejado por mês" hint="Somado às despesas fixas: a meta passa a ser pagar as despesas e ainda sobrar este valor.">
+          <Field label="Lucro desejado por mês" hint="Somado às contas do mês: a meta passa a ser pagar as contas e ainda sobrar este valor.">
             <MoneyInput value={form.monthly_profit_target} onValueChange={(v) => set('monthly_profit_target', v)} />
           </Field>
-          <Field label="Reserva de caixa" hint="Meses de despesas fixas que ficam no caixa antes de sugerir retirada ao dono.">
+          <Field label="Reserva de caixa" hint="Meses de contas que ficam no caixa antes de sugerir retirada ao dono.">
             <DecimalInput decimals={1} suffix="meses" value={form.cash_reserve_months} onValueChange={(v) => set('cash_reserve_months', v)} />
           </Field>
           <Field label="Horas de impressão por dia" hint="Quanto cada impressora ativa costuma imprimir por dia. Usado na capacidade × demanda da Visão geral.">

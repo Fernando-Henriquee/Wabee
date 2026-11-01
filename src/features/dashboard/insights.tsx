@@ -566,7 +566,7 @@ export function WithdrawalBlock() {
             <dt className="text-muted">− Contas a pagar em 30 dias</dt>
             <dd className="num text-right">{formatBRL(w.payables_30d)}</dd>
             <dt className="text-muted">
-              − Reserva ({formatNumber(w.reserve_months, 1)} {toNumber(w.reserve_months) === 1 ? 'mês' : 'meses'} de despesas fixas)
+              − Reserva ({formatNumber(w.reserve_months, 1)} {toNumber(w.reserve_months) === 1 ? 'mês' : 'meses'} das contas do mês)
             </dt>
             <dd className="num text-right">{formatBRL(w.reserve)}</dd>
             <dt className="font-medium">= Sobra no caixa</dt>
@@ -577,7 +577,7 @@ export function WithdrawalBlock() {
             <dd className={cn('num text-right', toNumber(w.month_result) < 0 && 'text-danger')}>{formatBRL(w.month_result)}</dd>
           </dl>
           <p className="text-xs text-muted">
-            Lucro = margem operacional das vendas − despesas fixas. A reserva é ajustável em Configurações → Empresa e regras.
+            Lucro = margem operacional das vendas − contas que venceram no mês. A reserva é ajustável em Configurações → Empresa e regras.
           </p>
         </div>
       )}
@@ -600,7 +600,7 @@ const ROWS: Array<{
   { key: 'margin_operational_pct', label: 'Margem %', kind: 'pct' },
   {
     key: 'fixed_expenses',
-    label: 'Despesas fixas',
+    label: 'Contas do período',
     kind: 'money',
     invert: true,
   },

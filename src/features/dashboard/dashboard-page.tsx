@@ -217,7 +217,7 @@ const MONTH_NAMES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
 const EXPENSE_SOURCE: Record<GoalExpenseSource, string> = {
   MANUAL: 'valor previsto nas configurações',
   MEDIA_3M: 'média dos meses anteriores',
-  MES: 'lançadas neste mês',
+  MES: 'parcelas e contas que vencem neste mês',
   NENHUMA: 'nenhuma despesa lançada',
 };
 
@@ -239,7 +239,7 @@ function goalStatus(g: MonthlyGoal): { text: string; tone: keyof typeof STATUS_T
   return { text: `No ritmo atual o mês fecha em ${formatBRL(projection)}: faltariam ${formatBRL(breakeven - projection)} para pagar as despesas.`, tone: 'danger' };
 }
 
-/** Meta do mês: faturamento necessário para pagar as despesas fixas (e o lucro desejado). */
+/** Meta do mês: faturamento necessário para pagar as contas do mês (e o lucro desejado). */
 function GoalBlock({ layer }: { layer: CostLayerView }) {
   const query = useMonthlyGoal(layer);
   const g = query.data;
@@ -261,8 +261,8 @@ function GoalBlock({ layer }: { layer: CostLayerView }) {
         title={`Meta de ${month}`}
         description={
           pct !== null && pct > 0
-            ? `Quanto faturar para pagar as despesas fixas${profit > 0 ? ` e lucrar ${formatBRL(profit)}` : ''}, com margem ${LAYER_NAMES[g.layer]} de ${formatPercent(pct)}`
-            : 'Quanto faturar para pagar as despesas fixas'
+            ? `Quanto faturar para pagar as contas do mês${profit > 0 ? ` e lucrar ${formatBRL(profit)}` : ''}, com margem ${LAYER_NAMES[g.layer]} de ${formatPercent(pct)}`
+            : 'Quanto faturar para pagar as contas do mês'
         }
         actions={
           <Button asChild variant="outline" size="sm">
@@ -282,7 +282,7 @@ function GoalBlock({ layer }: { layer: CostLayerView }) {
           <p className="flex items-start gap-2 text-sm text-muted">
             <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
             <span>
-              Nenhuma despesa fixa lançada ainda. Lance as despesas do mês (internet, DAS, assinaturas…) em{' '}
+              Nenhuma conta vence neste mês. Lance as despesas do mês (internet, DAS, assinaturas…) em{' '}
               <Link to="/financeiro/despesas" className="font-medium text-ink underline decoration-accent decoration-2 underline-offset-4">
                 Financeiro → Despesas
               </Link>{' '}
@@ -336,7 +336,7 @@ function GoalBlock({ layer }: { layer: CostLayerView }) {
                 hint={g.days_left > 0 ? `${g.days_left} dia(s) até o fim do mês` : 'Mês encerrado'}
               />
               <Stat label="Por dia" value={g.per_day ?? 0} hint="Para bater a meta, contando hoje" />
-              <Stat label="Resultado do mês" value={g.result} signed hint="Margem das vendas − despesas fixas já lançadas" />
+              <Stat label="Resultado do mês" value={g.result} signed hint="Margem das vendas − contas que vencem no mês" />
               <Stat
                 label="Pedidos que faltam"
                 value={g.orders_needed ?? 0}
@@ -351,7 +351,7 @@ function GoalBlock({ layer }: { layer: CostLayerView }) {
           <summary className="cursor-pointer select-none px-3 py-2 font-medium">Como a meta é calculada</summary>
           <div className="space-y-3 border-t border-line px-3 py-3">
             <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1">
-              <dt className="text-muted">Despesas fixas ({EXPENSE_SOURCE[g.expenses.source]})</dt>
+              <dt className="text-muted">Contas do mês ({EXPENSE_SOURCE[g.expenses.source]})</dt>
               <dd className="num text-right">{formatBRL(basis)}</dd>
               {profit > 0 ? (
                 <>
@@ -369,27 +369,27 @@ function GoalBlock({ layer }: { layer: CostLayerView }) {
             <p className="text-xs text-muted">
               De cada {formatBRL(100)} vendidos, sobram {pct === null ? '—' : formatBRL(100 * Math.max(pct, 0))} depois de material, taxas, embalagem e impostos
               {g.layer === 'direct' ? '' : ', energia e depreciação'}
-              {g.layer === 'full' ? ' e trabalho' : ''}: é isso que paga as despesas fixas. Troque a camada no topo da página para ver a meta em outra margem.
+              {g.layer === 'full' ? ' e trabalho' : ''}: é isso que paga as contas do mês. Troque a camada no topo da página para ver a meta em outra margem.
             </p>
-            {g.expenses.categories.length > 0 ? (
+            {g.expenses.bills.length > 0 ? (
               <table className="w-full text-xs">
                 <thead className="text-muted">
                   <tr>
-                    <th className="py-1 text-left font-medium">Despesa</th>
-                    <th className="py-1 text-right font-medium">Este mês</th>
-                    {g.expenses.avg_months > 0 ? (
-                      <th className="py-1 text-right font-medium">
-                        Média {g.expenses.avg_months} {g.expenses.avg_months === 1 ? 'mês' : 'meses'}
-                      </th>
-                    ) : null}
+                    <th className="py-1 text-left font-medium">Conta do mês</th>
+                    <th className="py-1 text-left font-medium">Parcela</th>
+                    <th className="py-1 text-right font-medium">Valor</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line">
-                  {g.expenses.categories.map((c) => (
-                    <tr key={c.code}>
-                      <td className="py-1">{c.name}</td>
-                      <td className="num py-1 text-right">{formatBRL(c.month)}</td>
-                      {g.expenses.avg_months > 0 ? <td className="num py-1 text-right">{c.avg_3m === null ? '—' : formatBRL(c.avg_3m)}</td> : null}
+                  {g.expenses.bills.map((b, i) => (
+                    <tr key={i}>
+                      <td className="py-1">
+                        {b.description}
+                        {b.payer === 'DONO' ? <span className="text-muted"> · pago pelo dono</span> : null}
+                        {b.paid ? <span className="text-success"> · paga</span> : null}
+                      </td>
+                      <td className="num py-1 text-muted">{b.installment}</td>
+                      <td className="num py-1 text-right">{formatBRL(b.amount)}</td>
                     </tr>
                   ))}
                 </tbody>
