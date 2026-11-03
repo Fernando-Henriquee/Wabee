@@ -1,4 +1,4 @@
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Money } from '@/components/shared/money';
 import { Button } from '@/components/ui/button';
@@ -6,15 +6,17 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Field } from '@/components/ui/field';
 import { Checkbox, Input, Select } from '@/components/ui/input';
 import { DecimalInput, MoneyInput } from '@/components/ui/money-input';
-import { type ItemRow, useItems } from '@/data/inventory';
+import { useItems } from '@/data/inventory';
 import { useEquipmentOptions } from '@/data/products';
 import { type CustomItemInput, useCreateCustomItem, usePreviewCustomItem } from '@/data/sales';
 import { useMember } from '@/features/member/member-context';
 import { useDebounced } from '@/features/production/use-now';
 import { CostBreakdown, DurationInput } from '@/features/products/bits';
 import { describeError } from '@/lib/errors';
-import { formatBRL, formatQty, toNumber } from '@/lib/money';
+import { formatBRL, toNumber } from '@/lib/money';
 import { useRequestId } from '@/lib/use-request-id';
+import { emptyMaterialRow, type MaterialRow } from './material-rows';
+import { MaterialSection } from './material-section';
 
 /** Linha do pedido gerada pelo item pontual. */
 export interface CustomItemAdded {
@@ -25,15 +27,6 @@ export interface CustomItemAdded {
   qty: string;
   price: string | null;
 }
-
-interface MaterialRow {
-  uid: string;
-  itemId: number | null;
-  qty: string | null;
-}
-
-const uid = () => crypto.randomUUID();
-const emptyRow = (): MaterialRow => ({ uid: uid(), itemId: null, qty: null });
 
 /**
  * Item pontual de encomenda (US-4.9): ficha simplificada (filamentos, tempo, componentes)
@@ -56,7 +49,7 @@ function CustomItemForm({ channelId, onClose, onAdded }: { channelId: number | n
   const equipment = useEquipmentOptions();
   const [requestId, renew] = useRequestId();
   const [name, setName] = useState('');
-  const [filamentRows, setFilamentRows] = useState<MaterialRow[]>(() => [emptyRow()]);
+  const [filamentRows, setFilamentRows] = useState<MaterialRow[]>(() => [emptyMaterialRow()]);
   const [componentRows, setComponentRows] = useState<MaterialRow[]>([]);
   const [minutes, setMinutes] = useState(0);
   const [unitsPerPlate, setUnitsPerPlate] = useState<string | null>('1');
@@ -196,58 +189,5 @@ function CustomItemForm({ channelId, onClose, onAdded }: { channelId: number | n
         ) : null}
       </div>
     </DialogContent>
-  );
-}
-
-function MaterialSection({
-  title,
-  addLabel,
-  rows,
-  onChange,
-  items,
-  unit,
-  emptyHint,
-}: {
-  title: string;
-  addLabel: string;
-  rows: MaterialRow[];
-  onChange: (rows: MaterialRow[]) => void;
-  items: ItemRow[] | undefined;
-  unit: 'g' | 'un';
-  emptyHint?: string;
-}) {
-  const update = (rowUid: string, patch: Partial<MaterialRow>) => onChange(rows.map((r) => (r.uid === rowUid ? { ...r, ...patch } : r)));
-  return (
-    <section className="space-y-2" aria-label={title}>
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-medium text-ink-soft">{title}</h3>
-        <Button variant="ghost" size="sm" onClick={() => onChange([...rows, emptyRow()])}>
-          <Plus /> {addLabel}
-        </Button>
-      </div>
-      {items && items.length === 0 && emptyHint ? <p className="text-xs text-warning">{emptyHint}</p> : null}
-      <ul className="space-y-2">
-        {rows.map((row) => (
-          <li key={row.uid} className="grid grid-cols-[minmax(0,1fr)_7.5rem_auto] items-end gap-2">
-            <Field label={addLabel}>
-              <Select value={row.itemId ?? ''} onChange={(e) => update(row.uid, { itemId: e.target.value ? Number(e.target.value) : null })}>
-                <option value="">Escolha…</option>
-                {(items ?? []).map((i) => (
-                  <option key={i.id} value={i.id}>
-                    {i.name} · saldo {formatQty(i.qty_on_hand, i.unit)}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label={unit === 'g' ? 'Gramas' : 'Qtd.'}>
-              <DecimalInput decimals={unit === 'g' ? 3 : 0} suffix={unit} value={row.qty} onValueChange={(v) => update(row.uid, { qty: v })} />
-            </Field>
-            <Button variant="ghost" size="icon-sm" aria-label={`Remover ${addLabel.toLowerCase()}`} className="mb-1" onClick={() => onChange(rows.filter((r) => r.uid !== row.uid))}>
-              <Trash2 />
-            </Button>
-          </li>
-        ))}
-      </ul>
-    </section>
   );
 }

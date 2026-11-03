@@ -35,6 +35,7 @@ export const MODEL_LABELS: Record<string, string> = {
   channel_price: 'Preço por canal',
   cost_rate: 'Taxa de custo',
   customer: 'Cliente',
+  quote_request: 'Orçamento',
   equipment: 'Equipamento',
   financial_category: 'Categoria financeira',
   installment: 'Parcela',
@@ -113,6 +114,14 @@ const FIELD_LABELS: Record<string, string> = {
   monthly_profit_target: 'Lucro desejado por mês',
   printer_hours_per_day: 'Horas de impressão por dia',
   cash_reserve_months: 'Reserva de caixa (meses)',
+  item_wanted: 'O que pediram',
+  quoted_unit_price: 'Preço da proposta',
+  follow_up_at: 'Próximo retorno',
+  lost_reason: 'Motivo da perda',
+  pix_key: 'Chave PIX',
+  pix_key_type: 'Tipo da chave PIX',
+  pix_holder: 'Titular do PIX',
+  quote_followup_days: 'Dias até o retorno do orçamento',
   min_qty: 'Estoque mínimo',
   model: 'Modelo',
   name: 'Nome',
@@ -284,6 +293,8 @@ export function auditObjectHref(row: Pick<AuditRow, 'model_label' | 'object_id'>
       return id ? `/vendas/${id}` : null;
     case 'customer':
       return id ? `/clientes/${id}` : null;
+    case 'quote_request':
+      return id ? `/orcamentos/${id}` : null;
     case 'cost_rate':
       return '/producao/taxas';
     case 'sales_channel':

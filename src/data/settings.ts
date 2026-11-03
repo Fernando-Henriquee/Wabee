@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/features/auth/auth-context';
 import type { AppSettings, OnboardingState, Role } from '@/features/member/member-context';
+import type { PixKeyType } from '@/lib/pix';
 import { from, rpc, unwrap } from './api';
 import { useAppQuery, useWrite } from './hooks';
 
@@ -89,6 +90,11 @@ export interface SettingsInput {
   monthly_profit_target?: string;
   printer_hours_per_day?: string;
   cash_reserve_months?: string;
+  /** Vazio = sem chave (a proposta sai sem o bloco de pagamento). */
+  pix_key?: string | null;
+  pix_key_type?: PixKeyType;
+  pix_holder?: string | null;
+  quote_followup_days?: number;
 }
 
 export type SettingsRow = AppSettings & { updated_at: string };

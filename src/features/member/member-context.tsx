@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { createContext, type ReactNode, useContext, useMemo } from 'react';
 import { unwrap } from '@/data/api';
 import { todayIn } from '@/lib/dates';
+import type { PixKeyType } from '@/lib/pix';
 import { supabase } from '@/lib/supabase';
 
 export type Role = 'dono' | 'producao' | 'leitura';
@@ -40,6 +41,12 @@ export interface AppSettings {
   monthly_profit_target: number;
   printer_hours_per_day: number;
   cash_reserve_months: number;
+  /** Chave PIX que vai no texto da proposta de orçamento. */
+  pix_key: string | null;
+  pix_key_type: PixKeyType;
+  pix_holder: string | null;
+  /** Dias até o próximo retorno de um orçamento sem resposta. */
+  quote_followup_days: number;
   onboarding_state: OnboardingState;
 }
 

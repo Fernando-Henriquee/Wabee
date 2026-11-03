@@ -264,6 +264,8 @@ export interface OrderInput extends CustomerRef {
   payment_terms?: PaymentTermInput[] | null;
   notes?: string | null;
   confirm?: boolean;
+  /** Orçamento que originou o pedido (ele passa a "Virou pedido"). */
+  quote_id?: number;
 }
 
 export interface PackagingInput {

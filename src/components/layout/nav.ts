@@ -1,6 +1,7 @@
 import {
   Boxes,
   ClipboardCheck,
+  ClipboardList,
   Factory,
   House,
   type LucideIcon,
@@ -30,6 +31,7 @@ export const NAV_ITEMS: NavItem[] = [
   { to: '/produtos', label: 'Produtos', icon: Package },
   { to: '/producao', label: 'Produção', icon: Factory, capability: 'production' },
   { to: '/vendas', label: 'Vendas', icon: ShoppingBag, capability: 'costs' },
+  { to: '/orcamentos', label: 'Orçamentos', icon: ClipboardList, capability: 'costs' },
   { to: '/compras', label: 'Compras', icon: ShoppingCart, capability: 'costs' },
   { to: '/financeiro', label: 'Financeiro', icon: Wallet, capability: 'costs' },
   { to: '/configuracoes', label: 'Configurações', icon: Settings },
@@ -50,6 +52,7 @@ export interface QuickAction {
 export const QUICK_ACTIONS: QuickAction[] = [
   { to: '/producao/impressoes/nova', label: 'Nova impressão', description: 'Planejar uma mesa', icon: Printer, capability: 'production' },
   { to: '/producao?status=IMPRIMINDO', label: 'Finalizar impressão', description: 'Tempo, gramas, boas e falhas', icon: ClipboardCheck, capability: 'production' },
+  { to: '/orcamentos?novo=1', label: 'Anotar orçamento', description: 'Pedido de orçamento em segundos', icon: ClipboardList, capability: 'write' },
   { to: '/vendas/rapida', label: 'Nova venda', description: 'Pronta entrega em poucos toques', icon: ShoppingBag, capability: 'write' },
   { to: '/compras/nova', label: 'Nova compra', description: 'Filamento, componentes, equipamento', icon: ShoppingCart, capability: 'write' },
   { to: '/estoque/ajuste', label: 'Ajuste de estoque', description: 'Contagem, pesagem, perda', icon: Boxes, capability: 'write' },

@@ -50,10 +50,23 @@ export interface OrderPrefill {
   kind?: OrderKind;
   channelId?: number | null;
   customer?: CustomerChoice;
-  lines: Array<{ variantId?: number | null; itemId?: number | null; qty: string; unitPrice: string | null; isGift: boolean }>;
+  lines: Array<{
+    variantId?: number | null;
+    itemId?: number | null;
+    /** Linha avulsa (sem produto): não vai para a produção. */
+    customDescription?: string | null;
+    qty: string;
+    unitPrice: string | null;
+    isGift: boolean;
+    /** Item pontual recém-criado: nome e custo estimado até o catálogo recarregar. */
+    label?: string;
+    estCost?: number | null;
+  }>;
   orderDiscount?: string | null;
   shippingCharged?: string | null;
   reason?: string;
+  /** Orçamento que está virando este pedido: ao criar o pedido ele passa a "Virou pedido". */
+  quoteId?: number;
 }
 
 const FEIRA_KEY = 'wabee:feira';

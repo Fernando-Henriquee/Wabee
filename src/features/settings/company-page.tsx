@@ -23,6 +23,7 @@ import { type AppSettings, useMember } from '@/features/member/member-context';
 import { formatDateBR, isValidISODate } from '@/lib/dates';
 import { describeError } from '@/lib/errors';
 import { formatBRL, toNumber } from '@/lib/money';
+import { PIX_KEY_TYPE_LABELS, type PixKeyType, pixKeyProblem } from '@/lib/pix';
 import { BackLink, ChoiceCards, FormError, NoAccess, Section, ToggleRow } from './bits';
 
 interface CompanyForm {
@@ -37,6 +38,10 @@ interface CompanyForm {
   monthly_profit_target: string | null;
   printer_hours_per_day: string | null;
   cash_reserve_months: string | null;
+  pix_key: string;
+  pix_key_type: PixKeyType;
+  pix_holder: string;
+  quote_followup_days: string | null;
   default_channel_id: string;
   default_order_packaging_item_id: string;
   allow_negative_stock: boolean;
@@ -61,6 +66,10 @@ function formFrom(s: AppSettings): CompanyForm {
     monthly_profit_target: str(s.monthly_profit_target),
     printer_hours_per_day: str(s.printer_hours_per_day),
     cash_reserve_months: str(s.cash_reserve_months),
+    pix_key: s.pix_key ?? '',
+    pix_key_type: s.pix_key_type,
+    pix_holder: s.pix_holder ?? '',
+    quote_followup_days: str(s.quote_followup_days),
     default_channel_id: s.default_channel_id ? String(s.default_channel_id) : '',
     default_order_packaging_item_id: s.default_order_packaging_item_id ? String(s.default_order_packaging_item_id) : '',
     allow_negative_stock: s.allow_negative_stock,
@@ -112,6 +121,10 @@ function CompanyFormView({ initial }: { initial: CompanyForm }) {
     const reserve = toNumber(form.cash_reserve_months);
     if (form.cash_reserve_months === null || reserve < 0 || reserve > 24) return setError('A reserva de caixa precisa ficar entre 0 e 24 meses.');
     if (form.filament_reference_cost_g === null || toNumber(form.filament_reference_cost_g) < 0) return setError('Informe o custo de referência do filamento.');
+    const pixProblem = pixKeyProblem(form.pix_key_type, form.pix_key);
+    if (pixProblem) return setError(pixProblem);
+    const followUp = Math.round(toNumber(form.quote_followup_days));
+    if (form.quote_followup_days === null || followUp < 1 || followUp > 90) return setError('O retorno do orçamento precisa ficar entre 1 e 90 dias.');
     const payload: SettingsInput = {
       company_name: name,
       timezone: form.timezone,
@@ -122,6 +135,10 @@ function CompanyFormView({ initial }: { initial: CompanyForm }) {
       monthly_profit_target: form.monthly_profit_target ?? '0',
       printer_hours_per_day: form.printer_hours_per_day,
       cash_reserve_months: form.cash_reserve_months,
+      pix_key: form.pix_key.trim() || null,
+      pix_key_type: form.pix_key_type,
+      pix_holder: form.pix_holder.trim() || null,
+      quote_followup_days: followUp,
       allow_negative_stock: form.allow_negative_stock,
       absorb_scrap_cost: form.absorb_scrap_cost,
       coverage_alert_days: days,
@@ -261,6 +278,27 @@ function CompanyFormView({ initial }: { initial: CompanyForm }) {
           </Field>
           <Field label="Horas de impressão por dia" hint="Quanto cada impressora ativa costuma imprimir por dia. Usado na capacidade × demanda da Visão geral.">
             <DecimalInput decimals={1} suffix="h/dia" value={form.printer_hours_per_day} onValueChange={(v) => set('printer_hours_per_day', v)} />
+          </Field>
+        </Section>
+
+        <Section title="Recebimento e orçamentos" description="A chave PIX vai no final da proposta enviada pelo WhatsApp. Em branco, a proposta sai sem o bloco de pagamento.">
+          <Field label="Tipo da chave PIX">
+            <Select value={form.pix_key_type} onChange={(e) => set('pix_key_type', e.target.value as PixKeyType)}>
+              {(Object.keys(PIX_KEY_TYPE_LABELS) as PixKeyType[]).map((type) => (
+                <option key={type} value={type}>
+                  {PIX_KEY_TYPE_LABELS[type]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Chave PIX" error={pixKeyProblem(form.pix_key_type, form.pix_key)}>
+            <Input value={form.pix_key} onChange={(e) => set('pix_key', e.target.value)} maxLength={140} placeholder="storewabee@gmail.com" autoCapitalize="none" spellCheck={false} />
+          </Field>
+          <Field label="Nome do titular" hint="Opcional. Aparece ao lado da chave na proposta.">
+            <Input value={form.pix_holder} onChange={(e) => set('pix_holder', e.target.value)} maxLength={100} placeholder={form.company_name} />
+          </Field>
+          <Field label="Retorno de orçamento sem resposta" hint="Dias até o sistema lembrar de procurar o cliente de novo. Você pode escolher outra data em cada orçamento.">
+            <DecimalInput decimals={0} suffix="dias" value={form.quote_followup_days} onValueChange={(v) => set('quote_followup_days', v)} />
           </Field>
         </Section>
 

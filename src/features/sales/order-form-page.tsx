@@ -124,11 +124,13 @@ function stateFromPrefill(prefill: OrderPrefill | undefined, defaultChannelId: n
       uid: uid(),
       variantId: l.variantId ?? null,
       itemId: l.itemId ?? null,
-      customDescription: null,
+      customDescription: l.customDescription ?? null,
       qty: l.qty,
       price: l.unitPrice,
       discount: null,
       isGift: l.isGift,
+      label: l.label,
+      estCost: l.estCost,
     })),
     orderDiscount: prefill?.orderDiscount ?? null,
     shipping: prefill?.shippingCharged ?? null,
@@ -178,7 +180,7 @@ export function OrderFormPage() {
     }
     return <OrderForm key={orderId} orderId={orderId} number={order.data.number} initial={stateFromOrder(order.data, lines.data, terms.data, settings.timezone)} />;
   }
-  return <OrderForm key="new" initial={stateFromPrefill(prefill, settings.default_channel_id, today())} reason={prefill?.reason} />;
+  return <OrderForm key="new" initial={stateFromPrefill(prefill, settings.default_channel_id, today())} reason={prefill?.reason} quoteId={prefill?.quoteId} />;
 }
 
 function Section({ title, description, actions, children }: { title: string; description?: ReactNode; actions?: ReactNode; children: ReactNode }) {
@@ -218,7 +220,7 @@ const PRESETS: Array<{ key: string; label: string; terms: (today: string) => Omi
   },
 ];
 
-function OrderForm({ orderId, number, initial, reason }: { orderId?: number; number?: string; initial: FormState; reason?: string }) {
+function OrderForm({ orderId, number, initial, reason, quoteId }: { orderId?: number; number?: string; initial: FormState; reason?: string; quoteId?: number }) {
   const { settings, today, can } = useMember();
   const showCosts = can('costs');
   const navigate = useNavigate();
@@ -346,6 +348,7 @@ function OrderForm({ orderId, number, initial, reason }: { orderId?: number; num
     payment_terms: termInputs.length > 0 ? termInputs : null,
     notes: form.notes.trim() || null,
     confirm: confirmNow,
+    quote_id: editing ? undefined : quoteId,
   });
 
   const submit = (confirmNow: boolean) => {
@@ -382,7 +385,7 @@ function OrderForm({ orderId, number, initial, reason }: { orderId?: number; num
       />
       {reason ? (
         <p className="mb-4 flex items-start gap-2 rounded-lg bg-warning-soft px-3 py-2 text-sm text-warning">
-          <InfoIcon className="mt-0.5 size-4 shrink-0" /> Veio da venda rápida: {reason} Ajuste o prazo e a condição de pagamento e confirme a encomenda.
+          <InfoIcon className="mt-0.5 size-4 shrink-0" /> {quoteId ? 'Veio do orçamento' : 'Veio da venda rápida'}: {reason} Ajuste o prazo e a condição de pagamento e confirme a encomenda.
         </p>
       ) : null}
 
