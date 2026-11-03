@@ -29,12 +29,13 @@ import {
   type ValueStage,
 } from '@/data/dashboard';
 import { type ItemKind, KIND_LABELS } from '@/data/inventory';
+import { useQuoteSummary } from '@/data/quotes';
 import { useMember } from '@/features/member/member-context';
 import { cn } from '@/lib/cn';
 import { diffInDays, formatDateBR, formatDateTimeBR } from '@/lib/dates';
 import { formatBRL, formatMinutes, formatNumber, formatPercent, toNumber } from '@/lib/money';
 import { pendingStepsFromState } from '@/features/onboarding/onboarding-logic';
-import { BacklogBlock, CompareBlock, DeliveryBlock, PriceSimulator, ProductMixBlock, WeeklySummaryBlock, WithdrawalBlock } from './insights';
+import { BacklogBlock, CompareBlock, DeliveryBlock, PriceSimulator, ProductMixBlock, QuotesBlock, WeeklySummaryBlock, WithdrawalBlock } from './insights';
 import { CustomizeDialog } from './layout';
 import { BLOCKS, type BlockId, useLayoutPrefs, visibleBlocks } from './layout-prefs';
 
@@ -60,7 +61,22 @@ const SEVERITY: Record<DashboardAlert['severity'], { icon: ReactNode; className:
 function Alerts({ finance }: { finance: boolean }) {
   const base = useAlerts();
   const insights = useInsights(finance);
-  const all = [...(base.data ?? []), ...(insights.data ?? [])];
+  const quotes = useQuoteSummary(finance);
+  const q = quotes.data;
+  const quoteAlerts: DashboardAlert[] = !q
+    ? []
+    : q.due > 0
+      ? [{
+          kind: 'quote_follow_up',
+          severity: q.overdue > 0 ? 'warning' : 'info',
+          title: 'Orçamentos para retomar',
+          detail: `${q.due} ${q.due === 1 ? 'pessoa para procurar' : 'pessoas para procurar'} hoje${q.overdue > 0 ? ` (${q.overdue} com retorno atrasado)` : ''}${toNumber(q.open_value) > 0 ? `; ${formatBRL(q.open_value)} em propostas abertas` : ''}.`,
+          href: '/orcamentos',
+        }]
+      : q.to_analyze > 0
+        ? [{ kind: 'quote_to_analyze', severity: 'info', title: 'Orçamentos para analisar', detail: `${q.to_analyze} ${q.to_analyze === 1 ? 'pedido anotado espera' : 'pedidos anotados esperam'} ficha e preço.`, href: '/orcamentos' }]
+        : [];
+  const all = [...(base.data ?? []), ...(insights.data ?? []), ...quoteAlerts];
   const order = { danger: 0, warning: 1, info: 2 };
   const alerts = { data: all.sort((a, b) => order[a.severity] - order[b.severity]) };
   if (alerts.data.length === 0) return null;
@@ -702,6 +718,7 @@ export function DashboardPage() {
     impressora: () => <NowPrintingBlock />,
     carteira: () => <BacklogBlock />,
     retirada: () => <WithdrawalBlock />,
+    orcamentos: () => <QuotesBlock from={range.from} to={range.to} />,
     produtos: () => <ProductMixBlock from={range.from} to={range.to} />,
     entregas: () => <DeliveryBlock from={range.from} to={range.to} />,
     comparar: () => <CompareBlock range={range} />,

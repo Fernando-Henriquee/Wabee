@@ -198,3 +198,31 @@ export function useSetQuoteStatus(onDone?: () => void) {
     onSuccess: () => onDone?.(),
   });
 }
+
+export interface QuoteFunnel {
+  created: number;
+  proposals: number;
+  won: number;
+  won_value: number;
+  lost: number;
+  /** Ganhos ÷ encerrados no período (nulo se nada foi encerrado). */
+  conversion: number | null;
+  avg_days_to_win: number | null;
+  lost_by_reason: Array<{ reason: LostReason; count: number; value: number }>;
+}
+
+export interface QuoteSummary {
+  open: number;
+  to_analyze: number;
+  due: number;
+  overdue: number;
+  open_value: number;
+}
+
+export function useQuoteFunnel(from: string, to: string, enabled = true) {
+  return useAppQuery(['dashboard', 'quote-funnel', from, to], () => rpc<QuoteFunnel>('quote_funnel', { p_from: from, p_to: to }), { enabled });
+}
+
+export function useQuoteSummary(enabled = true) {
+  return useAppQuery(['dashboard', 'quote-summary'], () => rpc<QuoteSummary>('quote_summary'), { enabled });
+}

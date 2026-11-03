@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { ErrorState, Skeleton } from '@/components/ui/states';
+import { LOST_REASON_LABELS, useQuoteFunnel, useQuoteSummary } from '@/data/quotes';
 import { type PeriodMetrics, useDeliveryStats, useOrderBacklog, useOwnerWithdrawal, usePeriodCompare, useProductMix, useWeeklySummary } from '@/data/dashboard';
 import { cn } from '@/lib/cn';
 import { addDays, addMonths, diffInDays, formatDateBR, isValidISODate } from '@/lib/dates';
@@ -711,6 +712,90 @@ export function CompareBlock({ range }: { range: DateRange }) {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// --- Orçamentos ---------------------------------------------------------------
+
+export function QuotesBlock({ from, to }: { from: string; to: string }) {
+  const funnel = useQuoteFunnel(from, to);
+  const summary = useQuoteSummary();
+  const f = funnel.data;
+  const s = summary.data;
+  const reasons = f?.lost_by_reason ?? [];
+  const maxLost = Math.max(1, ...reasons.map((r) => r.count));
+  const tiles: Array<{ label: string; value: string; hint?: string }> = f
+    ? [
+        { label: 'Anotados', value: String(f.created) },
+        { label: 'Propostas enviadas', value: String(f.proposals) },
+        { label: 'Viraram pedido', value: String(f.won), hint: f.won > 0 ? formatBRL(f.won_value) : undefined },
+        { label: 'Conversão', value: f.conversion === null ? '—' : formatPercent(f.conversion), hint: f.won + f.lost > 0 ? `${f.won} de ${f.won + f.lost} encerrados` : 'Nada encerrado no período' },
+      ]
+    : [];
+  return (
+    <Card>
+      <CardHeader
+        title="Orçamentos"
+        description="Pedidos de orçamento no período e o que ainda espera resposta"
+        actions={
+          <Button asChild variant="ghost" size="sm">
+            <Link to="/orcamentos">Abrir</Link>
+          </Button>
+        }
+      />
+      {!f || !s ? (
+        <Loading error={funnel.error ?? summary.error} onRetry={() => void funnel.refetch()} />
+      ) : (
+        <div className="space-y-4 p-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {tiles.map((t) => (
+              <div key={t.label} className="rounded-lg border border-line p-3">
+                <p className="text-xs font-medium text-muted">{t.label}</p>
+                <p className="num mt-1 text-xl font-semibold">{t.value}</p>
+                {t.hint ? <p className="text-xs text-muted">{t.hint}</p> : null}
+              </div>
+            ))}
+          </div>
+          <p className="text-sm">
+            {s.due > 0 ? (
+              <Link to="/orcamentos" className="font-medium text-warning hover:underline">
+                {s.due} {s.due === 1 ? 'pessoa' : 'pessoas'} para procurar hoje
+              </Link>
+            ) : (
+              <span className="text-muted">Ninguém para procurar hoje.</span>
+            )}
+            <span className="text-muted">
+              {' '}
+              · {s.open} em aberto
+              {toNumber(s.open_value) > 0 ? ` · ${formatBRL(s.open_value)} em propostas esperando resposta` : ''}
+              {f.avg_days_to_win !== null ? ` · fecham em ${formatNumber(f.avg_days_to_win, 1)} dias, em média` : ''}
+            </span>
+          </p>
+          {reasons.length > 0 ? (
+            <div>
+              <p className="mb-1.5 text-xs font-medium text-muted">Por que não fecharam (no período)</p>
+              <ul className="space-y-1.5 text-sm">
+                {reasons.map((r) => (
+                  <li key={r.reason} className="grid grid-cols-[minmax(0,10rem)_1fr_auto] items-center gap-2">
+                    <span className="truncate">{LOST_REASON_LABELS[r.reason]}</span>
+                    <span className="h-2 rounded-full bg-subtle" aria-hidden>
+                      <span className="block h-2 rounded-full bg-accent" style={{ width: `${(r.count / maxLost) * 100}%` }} />
+                    </span>
+                    <span className="num text-xs text-muted">{r.count}</span>
+                  </li>
+                ))}
+              </ul>
+              {reasons[0] && reasons[0].reason === 'PRECO' ? (
+                <p className="mt-2 text-xs text-muted">O preço é o motivo mais comum: vale conferir a margem alvo e mostrar o valor da peça (acabamento, material) na proposta.</p>
+              ) : null}
+              {reasons[0] && reasons[0].reason === 'SUMIU' ? (
+                <p className="mt-2 text-xs text-muted">A maioria some sem responder: o retorno em até 24 horas depois da proposta costuma ajudar.</p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       )}
     </Card>

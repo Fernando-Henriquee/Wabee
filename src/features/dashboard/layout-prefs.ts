@@ -6,7 +6,7 @@ import { useState } from 'react';
  */
 
 export type BlockId =
-  'resumo' | 'meta' | 'indicadores' | 'caminho' | 'impressora' | 'carteira' | 'retirada' | 'produtos' | 'entregas' | 'comparar' | 'graficos';
+  'resumo' | 'meta' | 'indicadores' | 'caminho' | 'impressora' | 'carteira' | 'retirada' | 'orcamentos' | 'produtos' | 'entregas' | 'comparar' | 'graficos';
 
 export const BLOCKS: Array<{ id: BlockId; label: string; half?: boolean }> = [
   { id: 'resumo', label: 'Resumo da semana' },
@@ -14,6 +14,7 @@ export const BLOCKS: Array<{ id: BlockId; label: string; half?: boolean }> = [
   { id: 'indicadores', label: 'Indicadores' },
   { id: 'carteira', label: 'Carteira e capacidade', half: true },
   { id: 'retirada', label: 'Quanto você pode retirar', half: true },
+  { id: 'orcamentos', label: 'Orçamentos (funil e retomadas)' },
   { id: 'caminho', label: 'Caminho do valor' },
   { id: 'impressora', label: 'Agora na impressora' },
   { id: 'produtos', label: 'Produtos (ABC, pontuais e cores)', half: true },

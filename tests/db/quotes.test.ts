@@ -223,6 +223,36 @@ describe('virar pedido', () => {
   });
 });
 
+describe('funil e resumo (Visão geral)', () => {
+  it('conta anotados, propostas, ganhos e perdas por motivo no período e resume o que pede ação', async () => {
+    await env.admin().query(`delete from public.quote_events`);
+    await env.admin().query(`delete from public.quote_requests`);
+    const a = await create({ item_wanted: 'A' });
+    const b = await create({ item_wanted: 'B' });
+    const c = await create({ item_wanted: 'C' });
+    await create({ item_wanted: 'D' });
+    for (const id of [a, b, c]) await env.as(dono, (s) => s.rpc('send_quote', { p_quote_id: id, p_unit_price: 100, p_description: null }));
+    await env.as(dono, (s) => s.rpc('set_quote_status', { p_quote_id: a, p_status: 'PERDIDO', p_reason: 'PRECO' }));
+    await env.as(dono, (s) => s.rpc('set_quote_status', { p_quote_id: b, p_status: 'PERDIDO', p_reason: 'SUMIU' }));
+    await env.as(dono, (s) => s.rpc('set_quote_status', { p_quote_id: c, p_status: 'GANHO' }));
+    const from = (await env.admin().one<{ d: string }>(`select (private.today() - 7)::text d`)).d;
+    const to = (await env.admin().one<{ d: string }>(`select (private.today() + 1)::text d`)).d;
+    const f = await env.as(dono, (s) =>
+      s.rpc<{ created: number; proposals: number; won: number; won_value: number; lost: number; conversion: number; lost_by_reason: Array<{ reason: string; count: number }> }>('quote_funnel', { p_from: from, p_to: to }),
+    );
+    expect(f).toMatchObject({ created: 4, proposals: 3, won: 1, lost: 2 });
+    expect(n(f.won_value)).toBe(100);
+    expect(n(f.conversion)).toBe(0.3333);
+    expect(f.lost_by_reason.map((r) => r.reason).sort()).toEqual(['PRECO', 'SUMIU']);
+
+    await env.admin().query(`update public.quote_requests set follow_up_at = private.today() - 2 where item_wanted = 'D'`);
+    const summary = await env.as(dono, (s) => s.rpc<{ open: number; to_analyze: number; due: number; overdue: number; open_value: number }>('quote_summary', {}));
+    expect(summary).toMatchObject({ open: 1, to_analyze: 1, due: 1, overdue: 1 });
+    expect(n(summary.open_value)).toBe(0);
+    await expect(env.as(producao, (s) => s.rpc('quote_summary', {}))).rejects.toThrow(/permissão/);
+  });
+});
+
 describe('PIX e reset', () => {
   it('a chave PIX é cadastrável em Configurações', async () => {
     const initial = await env.as(dono, (s) => s.one<{ pix_key: string; pix_key_type: string }>(`select pix_key, pix_key_type from public.settings`));
