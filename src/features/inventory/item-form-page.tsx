@@ -3,6 +3,7 @@ import { type ReactNode, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { Page, PageHeader } from '@/components/layout/page';
 import { ColorDot } from '@/components/shared/item-bits';
+import { PhotoField } from '@/components/shared/photo-field';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader } from '@/components/ui/card';
 import { Field } from '@/components/ui/field';
@@ -25,6 +26,7 @@ import {
   useSuppliers,
 } from '@/data/inventory';
 import { describeError } from '@/lib/errors';
+import { NO_PHOTO_DRAFT, type PhotoDraft } from '@/lib/photos';
 
 const KINDS: ItemKind[] = ['FILAMENT', 'COMPONENT', 'PACKAGING', 'CONSUMABLE', 'TOOL'];
 const COLORS = ['#141414', '#f4f2ec', '#f5b800', '#d62828', '#f77f00', '#2a9d8f', '#1d4ed8', '#7c3aed', '#ec4899', '#6b7280', '#8b5e34', '#16a34a'];
@@ -127,14 +129,15 @@ export function ItemFormPage() {
   if (id && item.isError) return <Page><ErrorState error={item.error} /></Page>;
   if (id && !item.data) return <Page><LoadingBlock /></Page>;
   const initialKind = (params.get('tipo') as ItemKind | null) ?? 'FILAMENT';
-  return <ItemForm key={id ?? 'new'} id={id} initial={item.data ? stateFromItem(item.data) : emptyState(KINDS.includes(initialKind) ? initialKind : 'FILAMENT')} />;
+  return <ItemForm key={id ?? 'new'} id={id} photoPath={item.data?.photo_path ?? null} initial={item.data ? stateFromItem(item.data) : emptyState(KINDS.includes(initialKind) ? initialKind : 'FILAMENT')} />;
 }
 
-function ItemForm({ id, initial }: { id?: string; initial: FormState }) {
+function ItemForm({ id, initial, photoPath }: { id?: string; initial: FormState; photoPath: string | null }) {
   const editing = Boolean(id);
   const navigate = useNavigate();
   const suppliers = useSuppliers();
   const [form, setForm] = useState<FormState>(initial);
+  const [photo, setPhoto] = useState<PhotoDraft>(NO_PHOTO_DRAFT);
   const [nameTouched, setNameTouched] = useState(editing);
   const [skuTouched, setSkuTouched] = useState(editing);
   const [suggestedSku, setSuggestedSku] = useState('');
@@ -195,6 +198,7 @@ function ItemForm({ id, initial }: { id?: string; initial: FormState }) {
           }
         : undefined,
       tool: form.kind === 'TOOL' ? { condition: form.tool_condition, acquired_at: form.tool_acquired_at || null, acquisition_value: form.tool_acquisition_value } : undefined,
+      photo: { ...photo, previous: photoPath },
     };
     save.mutate(payload, {
       onError: (e) => {
@@ -310,6 +314,7 @@ function ItemForm({ id, initial }: { id?: string; initial: FormState }) {
           <Field label="Local" hint='Ex.: "Gaveta 2", "Caixa seca"'>
             <Input value={form.location} onChange={(e) => set('location', e.target.value)} />
           </Field>
+          <PhotoField path={photoPath} draft={photo} onChange={setPhoto} className="sm:col-span-2" />
         </Section>
 
         {filament ? (

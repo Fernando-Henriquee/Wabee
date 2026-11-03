@@ -84,21 +84,6 @@ export function saveFeira(state: FeiraState) {
   }
 }
 
-export function initials(name: string): string {
-  const words = name
-    .replace(/[—–-]/g, ' ')
-    .split(/\s+/)
-    .filter((w) => w.length > 1 && !/^(de|da|do|das|dos|e)$/i.test(w));
-  const picked = words.length > 1 && /^chaveiros?$/i.test(words[0]!) ? words.slice(1) : words;
-  if (picked.length === 1) return picked[0]!.slice(0, 2).toUpperCase();
-  return (picked.slice(0, 2).map((w) => w.charAt(0)).join('') || name.slice(0, 2)).toUpperCase();
-}
-
-/** Só exibimos fotos com endereço completo; caminhos de armazenamento ficam com as iniciais. */
-export function photoUrl(path: string | null | undefined): string | null {
-  return path && /^(https?:|data:|blob:)/.test(path) ? path : null;
-}
-
 export function whatsappLink(phone: string | null | undefined, text?: string): string | null {
   const digits = (phone ?? '').replace(/\D/g, '');
   if (digits.length < 10) return null;

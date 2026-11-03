@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { Page, PageHeader } from '@/components/layout/page';
 import { DocumentHistory } from '@/components/shared/document-history';
 import { Money } from '@/components/shared/money';
+import { ProductThumb } from '@/components/shared/product-thumb';
 import { ReasonDialog } from '@/components/shared/reason-dialog';
 import { Stat } from '@/components/shared/stat';
 import { Badge } from '@/components/ui/badge';
@@ -477,7 +478,8 @@ function LineRow({
   return (
     <li className="px-4 py-3">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+        {line.photo_path ? <ProductThumb name={line.description ?? 'Item'} photoPath={line.photo_path} className="size-11 shrink-0 text-sm" /> : null}
+        <div className="min-w-0 flex-1">
           <p className="font-medium leading-tight">
             {line.description}
             {line.is_gift ? (

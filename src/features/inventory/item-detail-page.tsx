@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router';
 import { Page, PageHeader } from '@/components/layout/page';
 import { ExportMenu } from '@/components/shared/export-menu';
 import { ColorDot, Qty, RemainingBar } from '@/components/shared/item-bits';
+import { ProductThumb } from '@/components/shared/product-thumb';
 import { Money } from '@/components/shared/money';
 import { ReasonDialog } from '@/components/shared/reason-dialog';
 import { Stat } from '@/components/shared/stat';
@@ -241,6 +242,7 @@ export function ItemDetailPage() {
         }
         title={
           <span className="inline-flex items-center gap-2.5">
+            {it.photo_path ? <ProductThumb name={it.name} photoPath={it.photo_path} className="size-14 shrink-0 text-base" /> : null}
             {filament ? <ColorDot hex={it.color_hex} className="size-5" /> : null}
             {it.name}
           </span>

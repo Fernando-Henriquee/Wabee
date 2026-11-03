@@ -114,6 +114,17 @@ export class LocalStorage {
     return file;
   }
 
+  /** Download sem assinatura, só de bucket público (/object/public/...). */
+  async downloadPublic(bucket: string, name: string) {
+    const isPublic = await this.db.admin(async (pg) => {
+      const result = await pg.query<{ public: boolean }>('select public from storage.buckets where id = $1', [bucket]);
+      return result.rows[0]?.public === true;
+    });
+    const file = isPublic ? this.read(bucket, name) : null;
+    if (!file) throw new RestError(404, 'not_found', 'Object not found');
+    return file;
+  }
+
   async remove(claims: Claims, bucket: string, prefixes: string[]) {
     const removed = await this.db.asRole(claims, async (pg) => {
       const result = await pg.query<{ name: string }>(

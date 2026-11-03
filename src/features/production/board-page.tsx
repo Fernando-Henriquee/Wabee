@@ -7,6 +7,7 @@ import { DataTable } from '@/components/shared/data-table';
 import { ExportMenu } from '@/components/shared/export-menu';
 import { Money } from '@/components/shared/money';
 import { PeriodPresets, useDateRange } from '@/components/shared/period-presets';
+import { ProductThumb } from '@/components/shared/product-thumb';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/dialog';
@@ -419,7 +420,8 @@ function JobCard({
       )}
     >
       <div className="flex items-start justify-between gap-1">
-        <p className="min-w-0 text-sm font-semibold leading-snug">{job.outputs_summary}</p>
+        {job.photo_path ? <ProductThumb name={job.outputs_summary ?? job.code} photoPath={job.photo_path} className="mr-1 size-10 shrink-0 text-xs" /> : null}
+        <p className="min-w-0 flex-1 text-sm font-semibold leading-snug">{job.outputs_summary}</p>
         <div className="-my-1 -mr-1.5 shrink-0">{menu}</div>
       </div>
       <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted">

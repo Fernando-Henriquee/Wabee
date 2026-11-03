@@ -190,7 +190,12 @@ async function handleStorage(req: IncomingMessage, res: ServerResponse, url: URL
   const claims = claimsFor(req);
   const path = decodeURIComponent(url.pathname.replace(/^\/storage\/v1/, ''));
   try {
-    let match = /^\/object\/sign\/([^/]+)\/(.+)$/.exec(path);
+    let match = /^\/object\/public\/([^/]+)\/(.+)$/.exec(path);
+    if (match && req.method === 'GET') {
+      const file = await storage.downloadPublic(match[1]!, match[2]!);
+      return send(res, 200, file.data, { 'content-type': file.contentType, 'cache-control': 'public, max-age=60' });
+    }
+    match = /^\/object\/sign\/([^/]+)\/(.+)$/.exec(path);
     if (match && req.method === 'POST') {
       const body = parseJson(await readBody(req)) as { expiresIn?: number };
       return sendJson(res, 200, await storage.sign(claims, match[1]!, match[2]!, Number(body?.expiresIn ?? 60)));

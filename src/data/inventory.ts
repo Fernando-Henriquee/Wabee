@@ -1,5 +1,7 @@
+import type { PhotoChange } from '@/lib/photos';
 import { from, newRequestId, rpc, unwrap } from './api';
 import { useAppQuery, useWrite } from './hooks';
+import { savePhotoAfter } from './photos';
 
 /** Itens, carretéis e razão de estoque (Módulo 1). Leituras pelas views v_* (custos ocultos para Produção). */
 
@@ -94,6 +96,7 @@ export interface ItemRow {
   location: string | null;
   default_supplier_id: number | null;
   default_supplier_name: string | null;
+  photo_path: string | null;
   notes: string | null;
   active: boolean;
   material: Material | null;
@@ -297,11 +300,17 @@ export interface ItemInput {
     needs_drying?: boolean;
   };
   tool?: { condition?: string; acquired_at?: string | null; acquisition_value?: string | null };
+  /** Escolha de foto do formulário; não vai ao banco junto com o item. */
+  photo?: PhotoChange;
 }
 
 export function useSaveItem(onSaved?: (id: number) => void) {
   return useWrite<ItemInput, number>({
-    mutationFn: (item) => rpc<number>('save_item', { p_item: item }),
+    mutationFn: async ({ photo, ...item }) => {
+      const id = await rpc<number>('save_item', { p_item: item });
+      await savePhotoAfter('items', id, photo);
+      return id;
+    },
     success: (_id, item) => (item.id ? 'Item atualizado.' : 'Item cadastrado.'),
     onSuccess: (id) => onSaved?.(id),
   });

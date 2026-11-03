@@ -1,6 +1,8 @@
 import { keepPreviousData } from '@tanstack/react-query';
+import type { PhotoChange } from '@/lib/photos';
 import { from, rpc, unwrap } from './api';
 import { useAppQuery, useWrite } from './hooks';
+import { savePhotoAfter } from './photos';
 
 /** Produtos, variações, fichas técnicas e preços por canal (Módulo 4). */
 
@@ -297,11 +299,17 @@ export interface ProductInput {
   license_allows_commercial?: boolean | null;
   active?: boolean;
   variants: Array<{ id?: number; name: string; sku?: string | null; reference_price?: string | null; active?: boolean }>;
+  /** Escolha de foto do formulário; não vai ao banco junto com o produto. */
+  photo?: PhotoChange;
 }
 
 export function useSaveProduct(onSaved?: (id: number) => void) {
   return useWrite<ProductInput, number>({
-    mutationFn: (product) => rpc<number>('save_product', { p_product: product }),
+    mutationFn: async ({ photo, ...product }) => {
+      const id = await rpc<number>('save_product', { p_product: product });
+      await savePhotoAfter('products', id, photo);
+      return id;
+    },
     success: (_id, p) => (p.id ? 'Produto atualizado.' : 'Produto cadastrado: cada variação já tem seu item de estoque.'),
     onSuccess: (id) => onSaved?.(id),
   });

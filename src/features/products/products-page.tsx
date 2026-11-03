@@ -6,6 +6,7 @@ import { type Column, DataTable } from '@/components/shared/data-table';
 import { ExportMenu } from '@/components/shared/export-menu';
 import { Qty } from '@/components/shared/item-bits';
 import { Money } from '@/components/shared/money';
+import { ProductThumb } from '@/components/shared/product-thumb';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox, Select } from '@/components/ui/input';
@@ -14,7 +15,7 @@ import { CATEGORY_LABELS, type ProductCategory, useVariants, type VariantRow } f
 import { useMember } from '@/features/member/member-context';
 import type { ExportColumn } from '@/lib/export';
 import { formatMinutes, toNumber } from '@/lib/money';
-import { ProductInitials, UnitCost } from './bits';
+import { UnitCost } from './bits';
 
 function BomBadge({ row }: { row: VariantRow }) {
   if (row.active_bom_id) return <Badge tone="success">ficha v{row.active_bom_version}</Badge>;
@@ -50,7 +51,7 @@ export function ProductsPage() {
         sortValue: (r) => r.full_name,
         cell: (r) => (
           <span className="inline-flex items-center gap-3">
-            <ProductInitials name={r.product_name} className="size-9 text-xs" />
+            <ProductThumb name={r.product_name} photoPath={r.photo_path} className="size-9 shrink-0 text-xs" />
             <span>
               {r.product_name} <span className="text-muted">— {r.name}</span>
               <span className="block text-xs font-normal text-muted">
@@ -186,7 +187,7 @@ export function ProductsPage() {
           }
           mobileCard={(r) => (
             <div className="flex items-center gap-3">
-              <ProductInitials name={r.product_name} />
+              <ProductThumb name={r.product_name} photoPath={r.photo_path} className="size-10 shrink-0 text-sm" />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">
                   {r.product_name} <span className="text-muted">— {r.name}</span>

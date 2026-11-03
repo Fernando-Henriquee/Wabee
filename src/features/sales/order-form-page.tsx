@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { Page, PageHeader } from '@/components/layout/page';
 import { EntityPicker, type PickerOption } from '@/components/shared/entity-picker';
 import { Money } from '@/components/shared/money';
+import { ProductThumb } from '@/components/shared/product-thumb';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader } from '@/components/ui/card';
@@ -34,7 +35,7 @@ import { formatBRL, formatNumber, formatPercent, toNumber } from '@/lib/money';
 import { useRequestId } from '@/lib/use-request-id';
 import { CustomItemDialog } from './custom-item-dialog';
 import { channelFeeAmount, defaultPackaging, estimateMargin, lineTotal, previewInstallments } from './cart';
-import { BackLink, CustomerField, ProductThumb, Segmented, ValueRow } from './sales-bits';
+import { BackLink, CustomerField, Segmented, ValueRow } from './sales-bits';
 import { type CustomerChoice, customerRef, dateToTimestamp, localDate, NO_CUSTOMER, type OrderPrefill } from './sales-utils';
 import { productKey, useCatalog, useChannelPricing, usePackagingItems } from './use-catalog';
 

@@ -88,6 +88,8 @@ export const RATE_MODE_LABELS: Record<RateMode, string> = {
 export interface PrintJobRow {
   id: number;
   code: string;
+  /** Foto do produto do primeiro item da mesa. */
+  photo_path: string | null;
   status: PrintJobStatus;
   equipment_id: number;
   equipment_name: string;

@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { Page, PageHeader } from '@/components/layout/page';
 import { Money } from '@/components/shared/money';
+import { ProductThumb } from '@/components/shared/product-thumb';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -22,7 +23,7 @@ import { normalizeName } from '@/lib/text';
 import { useRequestId } from '@/lib/use-request-id';
 import { defaultPackaging, estimateMargin, lineTotal, orderTotals, suggestedPaymentFee } from './cart';
 import { PackagingEditor } from './packaging-editor';
-import { BackLink, CustomerField, ProductThumb, Stepper, ValueRow } from './sales-bits';
+import { BackLink, CustomerField, Stepper, ValueRow } from './sales-bits';
 import { type CustomerChoice, customerRef, dayStart, type FeiraState, loadFeira, NO_CUSTOMER, type OrderPrefill, saveFeira, useIsDesktop } from './sales-utils';
 import { type CatalogProduct, effectivePackaging, packagingCost, type PackagingRow, useCatalog, useChannelPricing, usePackagingItems } from './use-catalog';
 

@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { type OrderKind, ORDER_KIND_LABELS, ORDER_STATUS_LABELS, type OrderStatus, useCustomers } from '@/data/sales';
 import { cn } from '@/lib/cn';
 import { formatBRL, formatNumber } from '@/lib/money';
-import { type CustomerChoice, initials, NO_CUSTOMER, photoUrl, STATUS_TONES } from './sales-utils';
+import { type CustomerChoice, NO_CUSTOMER, STATUS_TONES } from './sales-utils';
 
 export function OrderStatusBadge({ status, className }: { status: OrderStatus; className?: string }) {
   return (
@@ -72,20 +72,6 @@ export function Stepper({
         <Plus className="size-4" />
       </button>
     </div>
-  );
-}
-
-const THUMB_TONES = ['bg-accent-soft text-accent-ink', 'bg-info-soft text-info', 'bg-success-soft text-success', 'bg-subtle text-ink-soft', 'bg-warning-soft text-warning'];
-
-/** Foto do produto ou iniciais (cor estável pelo nome). */
-export function ProductThumb({ name, photoPath, className }: { name: string; photoPath?: string | null; className?: string }) {
-  const url = photoUrl(photoPath);
-  const tone = THUMB_TONES[[...name].reduce((sum, c) => sum + c.charCodeAt(0), 0) % THUMB_TONES.length];
-  if (url) return <img src={url} alt="" loading="lazy" className={cn('rounded-lg object-cover', className)} />;
-  return (
-    <span aria-hidden className={cn('grid place-items-center rounded-lg font-display text-lg font-bold', tone, className)}>
-      {initials(name)}
-    </span>
   );
 }
 

@@ -2,6 +2,7 @@ import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { Page, PageHeader } from '@/components/layout/page';
+import { PhotoField } from '@/components/shared/photo-field';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader } from '@/components/ui/card';
 import { Field } from '@/components/ui/field';
@@ -22,6 +23,7 @@ import {
 } from '@/data/products';
 import { useMember } from '@/features/member/member-context';
 import { describeError } from '@/lib/errors';
+import { NO_PHOTO_DRAFT, type PhotoDraft } from '@/lib/photos';
 import { Warning } from './bits';
 
 interface VariantDraft {
@@ -79,14 +81,15 @@ export function ProductFormPage() {
   const variants = useVariants({ productId });
   if (productId && (product.isError || variants.isError)) return <Page><ErrorState error={product.error ?? variants.error} /></Page>;
   if (productId && (!product.data || !variants.data)) return <Page><LoadingBlock /></Page>;
-  return <ProductForm key={id ?? 'new'} productId={productId} initial={stateFrom(product.data ?? null, variants.data ?? [])} />;
+  return <ProductForm key={id ?? 'new'} productId={productId} photoPath={product.data?.photo_path ?? null} initial={stateFrom(product.data ?? null, variants.data ?? [])} />;
 }
 
-function ProductForm({ productId, initial }: { productId?: number; initial: FormState }) {
+function ProductForm({ productId, initial, photoPath }: { productId?: number; initial: FormState; photoPath: string | null }) {
   const editing = Boolean(productId);
   const navigate = useNavigate();
   const { can } = useMember();
   const [form, setForm] = useState<FormState>(initial);
+  const [photo, setPhoto] = useState<PhotoDraft>(NO_PHOTO_DRAFT);
   const [error, setError] = useState<string | null>(null);
   const save = useSaveProduct((savedId) => navigate(`/produtos/${savedId}`, { replace: true }));
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((f) => ({ ...f, [key]: value }));
@@ -118,6 +121,7 @@ function ProductForm({ productId, initial }: { productId?: number; initial: Form
         reference_price: v.reference_price,
         active: v.active,
       })),
+      photo: { ...photo, previous: photoPath },
     };
     save.mutate(payload, { onError: (e) => setError(describeError(e)) });
   };
@@ -162,6 +166,7 @@ function ProductForm({ productId, initial }: { productId?: number; initial: Form
             <Field label="Descrição" className="sm:col-span-2">
               <Textarea value={form.description} onChange={(e) => set('description', e.target.value)} maxLength={2000} className="min-h-16" />
             </Field>
+            <PhotoField path={photoPath} draft={photo} onChange={setPhoto} className="sm:col-span-2" />
           </div>
           {thirdParty ? (
             <div className="space-y-3 rounded-lg border border-line bg-subtle p-3">

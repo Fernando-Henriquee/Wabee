@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { Page, PageHeader } from '@/components/layout/page';
 import { DocumentHistory } from '@/components/shared/document-history';
 import { ColorDot, Qty } from '@/components/shared/item-bits';
+import { ProductThumb } from '@/components/shared/product-thumb';
 import { Stat } from '@/components/shared/stat';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -29,7 +30,7 @@ import { useMember } from '@/features/member/member-context';
 import { cn } from '@/lib/cn';
 import { formatDateBR } from '@/lib/dates';
 import { formatCost, formatMinutes, formatNumber, formatPercent, formatQty, toNumber } from '@/lib/money';
-import { CostBreakdown, Info, ProductInitials } from './bits';
+import { CostBreakdown, Info } from './bits';
 import { CompareBomDialog } from './compare-bom-dialog';
 import { CopyBomDialog } from './copy-bom-dialog';
 import { ChannelPricingCard } from './pricing';
@@ -62,7 +63,7 @@ export function ProductDetailPage() {
         }
         title={
           <span className="inline-flex items-center gap-3">
-            <ProductInitials name={p.name} />
+            <ProductThumb name={p.name} photoPath={p.photo_path} className="size-14 shrink-0 text-base" />
             {p.name}
           </span>
         }

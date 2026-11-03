@@ -5,6 +5,7 @@ import { Page, PageHeader } from '@/components/layout/page';
 import { type Column, DataTable } from '@/components/shared/data-table';
 import { ExportMenu } from '@/components/shared/export-menu';
 import { ColorDot, Qty } from '@/components/shared/item-bits';
+import { ProductThumb } from '@/components/shared/product-thumb';
 import { Money } from '@/components/shared/money';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -31,6 +32,7 @@ function useColumns(kind: ItemKind, showCosts: boolean): Column<ItemRow>[] {
       sortValue: (r) => r.name,
       cell: (r) => (
         <span className="inline-flex items-center gap-2">
+          {r.photo_path ? <ProductThumb name={r.name} photoPath={r.photo_path} className="size-9 shrink-0 text-xs" /> : null}
           {r.kind === 'FILAMENT' ? <ColorDot hex={r.color_hex} /> : null}
           <span>
             {r.name}
@@ -196,6 +198,7 @@ export function StockPage() {
           emptyDescription={belowOnly ? 'Todos os itens estão acima do mínimo e da cobertura desejada.' : 'Cadastre os itens que a Wabee guarda para controlar entradas e saídas.'}
           mobileCard={(r) => (
             <div className="flex items-center gap-3">
+              {r.photo_path ? <ProductThumb name={r.name} photoPath={r.photo_path} className="size-10 shrink-0 text-sm" /> : null}
               {r.kind === 'FILAMENT' ? <ColorDot hex={r.color_hex} className="size-5" /> : null}
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{r.name}</p>

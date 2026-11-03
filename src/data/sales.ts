@@ -95,6 +95,7 @@ export interface SalesOrderLineRow {
   variant_id: number | null;
   description: string | null;
   sku: string | null;
+  photo_path?: string | null;
   custom_description: string | null;
   qty: number;
   unit_price: number;

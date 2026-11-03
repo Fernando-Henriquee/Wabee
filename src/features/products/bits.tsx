@@ -7,17 +7,6 @@ import type { CostEstimate } from '@/data/products';
 import { cn } from '@/lib/cn';
 import { formatCost, formatMinutes, formatNumber, formatQty, toNumber } from '@/lib/money';
 
-/** Iniciais do produto no lugar da foto. */
-export function ProductInitials({ name, className }: { name: string; className?: string }) {
-  const words = name.replace(/^(chaveiro|vaso|suporte|porta)\s+/i, '').split(/\s+/).filter(Boolean);
-  const initials = (words.length > 1 ? words[0]![0]! + words[1]![0]! : (words[0] ?? name).slice(0, 2)).toUpperCase();
-  return (
-    <span aria-hidden className={cn('inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft font-display text-sm font-semibold text-accent-ink', className)}>
-      {initials}
-    </span>
-  );
-}
-
 export function Info({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div>
