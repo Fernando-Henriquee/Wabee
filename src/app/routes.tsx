@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router';
 import { dashboardRoutes } from '@/features/dashboard/routes';
 import { financeRoutes } from '@/features/finance/routes';
 import { inventoryRoutes } from '@/features/inventory/routes';
+import { personalRoutes } from '@/features/personal/routes';
 import { productionRoutes } from '@/features/production/routes';
 import { productsRoutes } from '@/features/products/routes';
 import { purchasingRoutes } from '@/features/purchasing/routes';
@@ -26,6 +27,7 @@ export function AppRoutes() {
       {purchasingRoutes()}
       {financeRoutes()}
       {settingsRoutes()}
+      {personalRoutes()}
       <Route path="/entrar" element={<NotFoundRedirect />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>

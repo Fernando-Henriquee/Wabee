@@ -1,5 +1,6 @@
 import {
   Boxes,
+  PiggyBank,
   ClipboardCheck,
   ClipboardList,
   Factory,
@@ -35,6 +36,8 @@ export const NAV_ITEMS: NavItem[] = [
   { to: '/compras', label: 'Compras', icon: ShoppingCart, capability: 'costs' },
   { to: '/financeiro', label: 'Financeiro', icon: Wallet, capability: 'costs' },
   { to: '/configuracoes', label: 'Configurações', icon: Settings },
+  // Finanças pessoais: separadas da empresa, só para o perfil Dono.
+  { to: '/pessoal', label: 'Pessoal', icon: PiggyBank, capability: 'write' },
 ];
 
 /** Barra inferior no celular (o botão central "+" abre os atalhos). */
@@ -52,6 +55,7 @@ export interface QuickAction {
 export const QUICK_ACTIONS: QuickAction[] = [
   { to: '/producao/impressoes/nova', label: 'Nova impressão', description: 'Planejar uma mesa', icon: Printer, capability: 'production' },
   { to: '/producao?status=IMPRIMINDO', label: 'Finalizar impressão', description: 'Tempo, gramas, boas e falhas', icon: ClipboardCheck, capability: 'production' },
+  { to: '/pessoal?novo=1', label: 'Gasto pessoal', description: 'Falar ou digitar um gasto seu', icon: PiggyBank, capability: 'write' },
   { to: '/orcamentos?novo=1', label: 'Anotar orçamento', description: 'Pedido de orçamento em segundos', icon: ClipboardList, capability: 'write' },
   { to: '/vendas/rapida', label: 'Nova venda', description: 'Pronta entrega em poucos toques', icon: ShoppingBag, capability: 'write' },
   { to: '/compras/nova', label: 'Nova compra', description: 'Filamento, componentes, equipamento', icon: ShoppingCart, capability: 'write' },

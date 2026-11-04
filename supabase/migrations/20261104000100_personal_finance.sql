@@ -213,7 +213,7 @@ begin
     raise exception 'Conta não encontrada.' using errcode = '22023';
   end if;
   if p_date < v_account.opening_date then
-    raise exception 'A data é anterior ao saldo inicial da conta "%" (%).', v_account.name, to_char(v_account.opening_date, 'DD/MM/YYYY') using errcode = '22023';
+    raise exception 'A data é anterior ao saldo inicial da conta "%" (%). Para lançar antes, mude a data do saldo em Ajustes.', v_account.name, to_char(v_account.opening_date, 'DD/MM/YYYY') using errcode = '22023';
   end if;
   if p_kind = 'TRANSFERENCIA' then
     if p_to_account is null or p_to_account = p_account then
@@ -224,7 +224,7 @@ begin
       raise exception 'Conta de destino não encontrada.' using errcode = '22023';
     end if;
     if p_date < v_account.opening_date then
-      raise exception 'A data é anterior ao saldo inicial da conta "%" (%).', v_account.name, to_char(v_account.opening_date, 'DD/MM/YYYY') using errcode = '22023';
+      raise exception 'A data é anterior ao saldo inicial da conta "%" (%). Para lançar antes, mude a data do saldo em Ajustes.', v_account.name, to_char(v_account.opening_date, 'DD/MM/YYYY') using errcode = '22023';
     end if;
   elsif p_category is not null then
     select * into v_category from public.pf_categories c where c.id = p_category and c.space_id = p_space;

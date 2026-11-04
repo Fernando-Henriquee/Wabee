@@ -34,7 +34,7 @@ interface Budget {
 }
 
 const budget = (user: string, date?: string) => env.as(user, (s) => s.rpc<Budget>('pf_budget', { p_date: date ?? null }));
-const add = (user: string, tx: Record<string, unknown>) => env.as(user, (s) => s.rpc<{ ids: number[] }>('pf_add_transaction', { p_request_id: rid(), p_txs: tx }));
+const add = (user: string, tx: Record<string, unknown> | Array<Record<string, unknown>>) => env.as(user, (s) => s.rpc<{ ids: number[] }>('pf_add_transaction', { p_request_id: rid(), p_txs: tx }));
 const plan = (user: string, p: Record<string, unknown>) => env.as(user, (s) => s.rpc<number>('pf_save_plan', { p_plan: p }));
 /** Limpa tabelas entre os testes (vários comandos, por isso db.exec). */
 const wipe = (...tables: string[]) => env.db.exec(tables.map((t) => `delete from public.${t};`).join(' '));

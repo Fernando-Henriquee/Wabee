@@ -47,6 +47,7 @@ export default defineConfig({
         shortcuts: [
           { name: 'Nova venda', short_name: 'Vender', url: '/vendas/rapida', icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }] },
           { name: 'Nova impressão', short_name: 'Imprimir', url: '/producao/impressoes/nova', icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }] },
+          { name: 'Gasto pessoal', short_name: 'Gasto', url: '/pessoal?novo=1', icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }] },
           { name: 'Finalizar impressão', short_name: 'Finalizar', url: '/producao?status=IMPRIMINDO', icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }] },
         ],
       },
