@@ -1,17 +1,18 @@
-import { CheckCircle2, MoreHorizontal, Pencil, RotateCcw, SkipForward } from 'lucide-react';
+import { CalendarClock, CheckCircle2, MoreHorizontal, Pencil, RotateCcw, SkipForward } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Menu, MenuContent, MenuItem, MenuTrigger } from '@/components/ui/menu';
 import { type PfScheduleRow, useSkipSchedule, useUnpaySchedule } from '@/data/personal';
-import { PayDialog, ScheduleAmountDialog } from './plan-dialogs';
+import { PayDialog, ScheduleAmountDialog, ScheduleDueDialog } from './plan-dialogs';
 
 /** Ações de um vencimento: pagar/receber, mudar o valor, pular ou desfazer. */
 export function ScheduleActions({ row, compact }: { row: PfScheduleRow; compact?: boolean }) {
-  const [dialog, setDialog] = useState<'pay' | 'amount' | null>(null);
+  const [dialog, setDialog] = useState<'pay' | 'amount' | 'due' | null>(null);
   const skip = useSkipSchedule();
   const unpay = useUnpaySchedule();
   const income = row.plan_kind === 'ENTRADA_FIXA';
-  const title = row.installments_total ? `${row.plan_name} (${row.number}/${row.installments_total})` : row.plan_name;
+  const canFollow = row.installments_total === null || row.number < row.installments_total;
+  const title =row.installments_total ? `${row.plan_name} (${row.number}/${row.installments_total})` : row.plan_name;
   return (
     <div className="flex items-center gap-1">
       {row.status === 'PREVISTO' ? (
@@ -32,6 +33,9 @@ export function ScheduleActions({ row, compact }: { row: PfScheduleRow; compact?
               <MenuItem onSelect={() => setDialog('amount')}>
                 <Pencil /> Alterar o valor
               </MenuItem>
+              <MenuItem onSelect={() => setDialog('due')}>
+                <CalendarClock /> Alterar o vencimento
+              </MenuItem>
               <MenuItem onSelect={() => skip.mutate(row.id)}>
                 <SkipForward /> Pular este vencimento
               </MenuItem>
@@ -44,6 +48,7 @@ export function ScheduleActions({ row, compact }: { row: PfScheduleRow; compact?
         </MenuContent>
       </Menu>
       {dialog === 'pay' ? <PayDialog target={{ scheduleId: row.id, name: title, amount: row.amount, dueDate: row.due_date, accountId: row.account_id, income }} open onOpenChange={(open) => !open && setDialog(null)} /> : null}
+      {dialog === 'due' ? <ScheduleDueDialog id={row.id} name={title} dueDate={row.due_date} canFollow={canFollow} open onOpenChange={(open) => !open && setDialog(null)} /> : null}
       {dialog === 'amount' ? <ScheduleAmountDialog id={row.id} name={title} amount={row.amount} open onOpenChange={(open) => !open && setDialog(null)} /> : null}
     </div>
   );

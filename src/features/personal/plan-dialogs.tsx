@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Field } from '@/components/ui/field';
-import { Input, Select, Textarea } from '@/components/ui/input';
+import { Checkbox, Input, Select, Textarea } from '@/components/ui/input';
 import { DecimalInput, MoneyInput } from '@/components/ui/money-input';
 import {
   AMORTIZATION_LABELS,
@@ -16,6 +16,7 @@ import {
   usePfCategories,
   useSavePlan,
   useSetScheduleAmount,
+  useSetScheduleDue,
 } from '@/data/personal';
 import { useMember } from '@/features/member/member-context';
 import { cn } from '@/lib/cn';
@@ -140,6 +141,71 @@ export function ScheduleAmountDialog({ id, name, amount, open, onOpenChange }: {
           <Field label="Valor previsto">
             <MoneyInput value={value} onValueChange={setValue} autoFocus />
           </Field>
+          {error ? <p role="alert" className="text-sm text-danger">{error}</p> : null}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Muda a data de um vencimento em aberto e, se quiser, a dos seguintes (mesmo dia nos meses que vêm). */
+export function ScheduleDueDialog({
+  id,
+  name,
+  dueDate,
+  canFollow,
+  open,
+  onOpenChange,
+}: {
+  id: number;
+  name: string;
+  dueDate: string;
+  /** Há vencimentos seguintes que podem acompanhar a nova data. */
+  canFollow: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [date, setDate] = useState(dueDate);
+  const [following, setFollowing] = useState(canFollow);
+  const [error, setError] = useState<string | null>(null);
+  const save = useSetScheduleDue(() => onOpenChange(false));
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        title="Alterar o vencimento"
+        description={name}
+        size="sm"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancelar
+            </Button>
+            <Button
+              loading={save.isPending}
+              onClick={() => {
+                setError(null);
+                if (!isValidISODate(date)) return setError('Informe uma data válida.');
+                save.mutate({ id, date, following: canFollow && following }, { onError: (e) => setError(describeError(e)) });
+              }}
+            >
+              Salvar
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Field label="Vence em">
+            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} autoFocus />
+          </Field>
+          {canFollow ? (
+            <label className="flex items-start gap-2 text-sm">
+              <Checkbox className="mt-0.5" checked={following} onChange={(e) => setFollowing(e.target.checked)} />
+              <span>
+                Mudar também os próximos vencimentos
+                <span className="block text-xs text-muted">Eles passam a cair no mesmo dia nos meses seguintes. O que já foi pago não muda.</span>
+              </span>
+            </label>
+          ) : null}
           {error ? <p role="alert" className="text-sm text-danger">{error}</p> : null}
         </div>
       </DialogContent>
@@ -362,6 +428,11 @@ function PlanForm({ plan, onClose, onSaved }: { plan: PfPlan | null; onClose: ()
             </>
           ) : null}
 
+          {editing ? (
+            <p className="rounded-lg bg-subtle px-3 py-2 text-sm text-muted sm:col-span-2">
+              Para mudar a data de vencimento, use o menu <span className="font-medium text-ink">⋯</span> ao lado do vencimento e escolha “Alterar o vencimento”.
+            </p>
+          ) : null}
           <Field label={kind === 'ENTRADA_FIXA' ? 'Cai em qual conta' : 'Paga com qual conta'}>
             <Select value={form.accountId} onChange={(e) => set('accountId', e.target.value)}>
               <option value="">Escolher na hora de pagar</option>

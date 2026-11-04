@@ -252,6 +252,45 @@ describe('parcelas e contas fixas', () => {
     await wipe('pf_transactions', 'pf_schedule', 'pf_plans');
   });
 
+  it('mudar o vencimento: só uma parcela, ou ela e as seguintes em aberto', async () => {
+    const p = await plan(ana, { kind: 'PARCELADO', name: 'Sofá', amount: 100, installments_total: 4, first_due: '2027-03-10', account_id: conta });
+    const list = () => rows<{ id: number; number: number; due_date: Date; status: string }>(ana, `select id, number, due_date, status from public.v_pf_schedule where plan_id = $1 order by number`, [p]);
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    const before = await list();
+    // Só a segunda parcela.
+    await env.as(ana, (s) => s.rpc('pf_set_schedule_due', { p_schedule_id: before[1]!.id, p_date: '2027-04-15' }));
+    expect((await list()).map((r) => iso(r.due_date))).toEqual(['2027-03-10', '2027-04-15', '2027-05-10', '2027-06-10']);
+    // A primeira já paga não muda; a terceira e a quarta acompanham.
+    const hoje = await day(0);
+    await env.as(ana, (s) => s.rpc('pf_pay_schedule', { p_schedule_id: before[0]!.id, p_date: hoje }));
+    await env.as(ana, (s) => s.rpc('pf_set_schedule_due', { p_schedule_id: before[1]!.id, p_date: '2027-04-20', p_following: true }));
+    const after = await list();
+    expect(after.map((r) => iso(r.due_date))).toEqual(['2027-03-10', '2027-04-20', '2027-05-20', '2027-06-20']);
+    const planRow = (await rows<{ first_due: Date }>(ana, `select first_due from public.v_pf_plans where id = $1`, [p]))[0]!;
+    expect(iso(planRow.first_due)).toBe('2027-03-20');
+    // Parcela paga não muda de data; pulada também não.
+    await expect(env.as(ana, (s) => s.rpc('pf_set_schedule_due', { p_schedule_id: before[0]!.id, p_date: '2027-03-25' }))).rejects.toThrow(/em aberto/);
+    // Quem é de outro espaço não mexe.
+    await expect(env.as(cris, (s) => s.rpc('pf_set_schedule_due', { p_schedule_id: before[1]!.id, p_date: '2027-04-25' }))).rejects.toThrow(/não encontrado/);
+    await wipe('pf_transactions', 'pf_schedule', 'pf_plans');
+  });
+
+  it('mudar o dia de uma conta fixa leva os próximos meses junto e não recria os anteriores', async () => {
+    const p = await plan(ana, { kind: 'CONTA_FIXA', name: 'Internet', amount: 120, first_due: await day(3), account_id: conta });
+    const items = await rows<{ id: number; number: number; due_date: Date }>(ana, `select id, number, due_date from public.v_pf_schedule where plan_id = $1 order by number`, [p]);
+    const first = items[0]!;
+    const target = await day(5);
+    await env.as(ana, (s) => s.rpc('pf_set_schedule_due', { p_schedule_id: first.id, p_date: target, p_following: true }));
+    const after = await rows<{ number: number; due_date: Date; status: string }>(ana, `select number, due_date, status from public.v_pf_schedule where plan_id = $1 order by number`, [p]);
+    expect(after[0]!.due_date.toISOString().slice(0, 10)).toBe(target);
+    expect(after.every((r) => r.status === 'PREVISTO')).toBe(true);
+    // Sincronizar de novo não duplica nem cria vencimentos antigos.
+    await env.as(ana, (s) => s.rpc('pf_sync', {}));
+    const again = await rows<{ number: number }>(ana, `select number from public.v_pf_schedule where plan_id = $1`, [p]);
+    expect(new Set(again.map((r) => r.number)).size).toBe(again.length);
+    await wipe('pf_transactions', 'pf_schedule', 'pf_plans');
+  });
+
   it('apagar o lançamento que pagou a parcela volta a parcela para prevista', async () => {
     const p = await plan(ana, { kind: 'PARCELADO', name: 'Fone', amount: 80, installments_total: 2, first_due: await day(2), account_id: conta });
     const item = (await rows<{ id: number }>(ana, `select id from public.v_pf_schedule where plan_id = $1 and number = 1`, [p]))[0]!;

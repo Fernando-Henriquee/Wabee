@@ -367,6 +367,14 @@ export function useSetScheduleAmount(onDone?: () => void) {
   });
 }
 
+export function useSetScheduleDue(onDone?: () => void) {
+  return useWrite<{ id: number; date: string; following: boolean }>({
+    mutationFn: (v) => rpc('pf_set_schedule_due', { p_schedule_id: v.id, p_date: v.date, p_following: v.following }),
+    success: 'Vencimento atualizado.',
+    onSuccess: () => onDone?.(),
+  });
+}
+
 export function useClosePlan(onDone?: () => void) {
   return useWrite<number>({
     mutationFn: (id) => rpc('pf_close_plan', { p_plan_id: id }),
