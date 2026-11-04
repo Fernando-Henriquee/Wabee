@@ -55,6 +55,9 @@ function PayForm({ target, onClose }: { target: PayTarget; onClose: () => void }
   const [error, setError] = useState<string | null>(null);
   const pay = usePaySchedule(onClose);
   const verb = target.income ? 'Recebido' : 'Pago';
+  // Vencimento de um mês que ainda não chegou: pagar agora é antecipar (e o valor costuma ser menor).
+  const early = !target.income && target.dueDate.slice(0, 7) > today.slice(0, 7);
+  const saving = early ? target.amount - toNumber(amount) : 0;
 
   const submit = () => {
     setError(null);
@@ -65,7 +68,7 @@ function PayForm({ target, onClose }: { target: PayTarget; onClose: () => void }
 
   return (
     <DialogContent
-      title={target.income ? 'Registrar recebimento' : 'Registrar pagamento'}
+      title={target.income ? 'Registrar recebimento' : early ? 'Antecipar pagamento' : 'Registrar pagamento'}
       description={`${target.name} · vencimento ${target.dueDate.split('-').reverse().join('/')}`}
       size="sm"
       footer={
@@ -83,9 +86,17 @@ function PayForm({ target, onClose }: { target: PayTarget; onClose: () => void }
         <Field label={`${verb} em`}>
           <Input type="date" max={today} value={date} onChange={(e) => setDate(e.target.value)} />
         </Field>
-        <Field label="Valor" hint="Mude se veio diferente do previsto (juros, desconto…).">
-          <MoneyInput value={amount} onValueChange={setAmount} />
+        {early ? (
+          <p className="rounded-lg border border-warning/40 bg-warning-soft px-3 py-2 text-sm">
+            Esta parcela vence só em {target.dueDate.split('-').reverse().join('/')}. Ao antecipar, o banco costuma cobrar menos juros: <strong>informe o valor que você realmente pagou</strong>.
+          </p>
+        ) : null}
+        <Field label={early ? 'Valor pago de fato' : 'Valor'} hint={early ? `Previsto: ${formatBRL(target.amount)}` : 'Mude se veio diferente do previsto (juros, desconto…).'}>
+          <MoneyInput value={amount} onValueChange={setAmount} autoFocus={early} />
         </Field>
+        {early && saving > 0.004 ? (
+          <p className="text-sm text-success">Você economiza {formatBRL(saving)} em relação ao previsto.</p>
+        ) : null}
         <Field label={target.income ? 'Entrou na conta' : 'Saiu da conta'}>
           <Select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
             <option value="">Conta do cadastro</option>

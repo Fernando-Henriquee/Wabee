@@ -139,7 +139,7 @@ export function PlanDetailPage() {
                     {financing ? <td className="px-2 py-2 text-right text-muted"><PMoney value={r.interest} /></td> : null}
                     {financing ? <td className="px-2 py-2 text-right text-muted"><PMoney value={r.interest === null ? null : r.amount - r.interest} /></td> : null}
                     <td className="px-2 py-2"><Badge tone={STATUS[r.status].tone}>{STATUS[r.status].label}</Badge></td>
-                    <td className="px-4 py-2 text-right">{p.status === 'ATIVO' || r.status !== 'PREVISTO' ? <ScheduleActions row={r} compact /> : null}</td>
+                    <td className="px-4 py-2 text-right">{p.status === 'ATIVO' || r.status !== 'PREVISTO' ? <ScheduleActions row={r} /> : null}</td>
                   </tr>
                 ))}
               </tbody>

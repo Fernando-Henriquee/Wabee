@@ -303,6 +303,28 @@ describe('parcelas e contas fixas', () => {
     await wipe('pf_transactions', 'pf_schedule', 'pf_plans');
   });
 
+  it('antecipar parcela de financiamento por menos: a economia sai dos juros, o saldo devedor cai pela amortização prevista', async () => {
+    const p = await plan(ana, { kind: 'FINANCIAMENTO', name: 'Moto', principal: 1200, installments_total: 12, rate_month: 0.02, system: 'SAC', first_due: await day(40), account_id: conta });
+    const last = (await rows<{ id: number; amount: number; interest: number }>(ana, `select id, amount, interest from public.v_pf_schedule where plan_id = $1 and number = 12`, [p]))[0]!;
+    const planned = n(last.amount);
+    const amortization = planned - n(last.interest);
+    const before = (await rows<{ outstanding_principal: number }>(ana, `select outstanding_principal from public.v_pf_plans where id = $1`, [p]))[0]!;
+    const paid = Math.round((amortization + 0.5) * 100) / 100; // quase sem juros
+    await env.as(ana, (s) => s.rpc('pf_pay_schedule', { p_schedule_id: last.id, p_amount: paid }));
+    const row = (await rows<{ amount: number; interest: number; status: string }>(ana, `select amount, interest, status from public.v_pf_schedule where id = $1`, [last.id]))[0]!;
+    expect(row.status).toBe('PAGO');
+    expect(n(row.amount)).toBe(paid);
+    expect(n(row.interest)).toBeCloseTo(0.5, 2);
+    const after = (await rows<{ outstanding_principal: number }>(ana, `select outstanding_principal from public.v_pf_plans where id = $1`, [p]))[0]!;
+    expect(n(before.outstanding_principal) - n(after.outstanding_principal)).toBeCloseTo(amortization, 2);
+    // Pagar menos que a própria amortização: juros zeram e o saldo devedor cai só o que foi pago.
+    const other = (await rows<{ id: number; amount: number; interest: number }>(ana, `select id, amount, interest from public.v_pf_schedule where plan_id = $1 and number = 11`, [p]))[0]!;
+    await env.as(ana, (s) => s.rpc('pf_pay_schedule', { p_schedule_id: other.id, p_amount: 10 }));
+    const row11 = (await rows<{ interest: number }>(ana, `select interest from public.v_pf_schedule where id = $1`, [other.id]))[0]!;
+    expect(n(row11.interest)).toBe(0);
+    await wipe('pf_transactions', 'pf_schedule', 'pf_plans');
+  });
+
   it('mudar o dia de uma conta fixa leva os próximos meses junto e não recria os anteriores', async () => {
     const p = await plan(ana, { kind: 'CONTA_FIXA', name: 'Internet', amount: 120, first_due: await day(3), account_id: conta });
     const items = await rows<{ id: number; number: number; due_date: Date }>(ana, `select id, number, due_date from public.v_pf_schedule where plan_id = $1 order by number`, [p]);

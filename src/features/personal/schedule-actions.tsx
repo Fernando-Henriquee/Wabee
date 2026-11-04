@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Menu, MenuContent, MenuItem, MenuTrigger } from '@/components/ui/menu';
 import { type PfScheduleRow, useSkipSchedule, useUnpaySchedule } from '@/data/personal';
+import { useMember } from '@/features/member/member-context';
 import { PayDialog, ScheduleAmountDialog, ScheduleDueDialog } from './plan-dialogs';
 
 /** Ações de um vencimento: pagar/receber, mudar o valor, pular ou desfazer. */
@@ -11,14 +12,17 @@ export function ScheduleActions({ row, compact }: { row: PfScheduleRow; compact?
   const skip = useSkipSchedule();
   const unpay = useUnpaySchedule();
   const income = row.plan_kind === 'ENTRADA_FIXA';
+  const { today } = useMember();
+  const early = !income && row.status === 'PREVISTO' && row.due_date.slice(0, 7) > today().slice(0, 7);
+  const payLabel = income ? 'Receber' : early ? 'Antecipar' : 'Pagar';
   const canFollow = row.installments_total === null || row.number < row.installments_total;
   const title =row.installments_total ? `${row.plan_name} (${row.number}/${row.installments_total})` : row.plan_name;
   return (
     <div className="flex items-center gap-1">
       {row.status === 'PREVISTO' ? (
         <Button size="sm" variant="outline" onClick={() => setDialog('pay')}>
-          <CheckCircle2 /> {compact ? null : income ? 'Receber' : 'Pagar'}
-          {compact ? <span className="sr-only">{income ? 'Receber' : 'Pagar'}</span> : null}
+          <CheckCircle2 /> {compact ? null : payLabel}
+          {compact ? <span className="sr-only">{payLabel}</span> : null}
         </Button>
       ) : null}
       <Menu>
