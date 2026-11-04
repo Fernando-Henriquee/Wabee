@@ -286,6 +286,7 @@ function PlanForm({ plan, onClose, onSaved }: { plan: PfPlan | null; onClose: ()
   const categoryKind = kind === 'ENTRADA_FIXA' ? 'ENTRADA' : 'GASTO';
   const count = Math.round(toNumber(form.count));
   const rate = toNumber(form.ratePct) / 100;
+  const paidNow = recurring ? 0 : Math.max(0, Math.round(toNumber(form.paidCount)));
 
   const preview = useMemo(() => {
     if (kind !== 'FINANCIAMENTO' || editing) return null;
@@ -326,6 +327,8 @@ function PlanForm({ plan, onClose, onSaved }: { plan: PfPlan | null; onClose: ()
     }
     const paid = Math.round(toNumber(form.paidCount));
     if (!recurring && paid > count) return setError('As parcelas já pagas não podem passar do total.');
+    // Com parcelas já pagas, a data informada é a da próxima em aberto: a data-base recua esses meses.
+    const firstDue = !recurring && !editing && paid > 0 ? addMonths(form.firstDue, -paid) : form.firstDue;
     save.mutate(
       {
         id: plan?.id,
@@ -335,7 +338,7 @@ function PlanForm({ plan, onClose, onSaved }: { plan: PfPlan | null; onClose: ()
         category_id: form.categoryId ? Number(form.categoryId) : null,
         amount: kind === 'FINANCIAMENTO' && form.system !== 'FIXA' ? 0 : form.amount,
         installments_total: recurring ? (form.count ? count : null) : count,
-        first_due: form.firstDue,
+        first_due: firstDue,
         paid_count: paid > 0 ? paid : 0,
         lender: form.lender.trim() || null,
         principal: form.principal,
@@ -410,7 +413,11 @@ function PlanForm({ plan, onClose, onSaved }: { plan: PfPlan | null; onClose: ()
 
           {!editing ? (
             <>
-              <Field label={recurring ? 'Próximo vencimento' : 'Primeira parcela vence em'} required>
+              <Field
+                label={recurring ? 'Próximo vencimento' : paidNow > 0 ? `Próxima parcela (a ${paidNow + 1}ª) vence em` : 'Primeira parcela vence em'}
+                required
+                hint={paidNow > 0 ? `As ${paidNow} já pagas ficam nos meses anteriores.` : undefined}
+              >
                 <Input type="date" value={form.firstDue} onChange={(e) => set('firstDue', e.target.value)} />
               </Field>
               <Field

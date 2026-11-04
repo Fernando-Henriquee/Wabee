@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { n, TestEnv } from './env';
 
@@ -272,6 +274,32 @@ describe('parcelas e contas fixas', () => {
     await expect(env.as(ana, (s) => s.rpc('pf_set_schedule_due', { p_schedule_id: before[0]!.id, p_date: '2027-03-25' }))).rejects.toThrow(/em aberto/);
     // Quem é de outro espaço não mexe.
     await expect(env.as(cris, (s) => s.rpc('pf_set_schedule_due', { p_schedule_id: before[1]!.id, p_date: '2027-04-25' }))).rejects.toThrow(/não encontrado/);
+    await wipe('pf_transactions', 'pf_schedule', 'pf_plans');
+  });
+
+  it('parcelas pré-pagas com data no futuro: o conserto da migration recua para os meses anteriores', async () => {
+    const proxima = await day(5);
+    // Cadastro como era antes: a data digitada (a da próxima parcela) virou a da parcela 1.
+    const p = await plan(ana, { kind: 'FINANCIAMENTO', name: 'Empréstimo', principal: 1200, installments_total: 12, rate_month: 0, system: 'PRICE', first_due: proxima, paid_count: 3, account_id: conta });
+    const list = () => rows<{ number: number; due_date: Date; status: string }>(ana, `select number, due_date, status from public.v_pf_schedule where plan_id = $1 order by number`, [p]);
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    const before = await list();
+    expect(iso(before[3]!.due_date) > proxima).toBe(true); // a 4ª foi parar 3 meses à frente
+    const sql = readFileSync(join(process.cwd(), 'supabase/migrations/20261104000500_personal_prepaid_dates.sql'), 'utf8');
+    const fix = sql.split('-- fix:begin')[1]!.split('-- fix:end')[0]!;
+    await env.db.exec(fix);
+    const after = await list();
+    expect(iso(after[3]!.due_date)).toBe(proxima); // a próxima em aberto cai na data que o dono digitou
+    expect(after.slice(0, 3).every((r) => iso(r.due_date) < proxima && r.status === 'PAGO')).toBe(true);
+    const base = (await rows<{ first_due: Date }>(ana, `select first_due from public.v_pf_plans where id = $1`, [p]))[0]!;
+    expect(iso(base.first_due)).toBe(iso(after[0]!.due_date));
+    // Rodar de novo não mexe em nada.
+    await env.db.exec(fix);
+    expect((await list()).map((r) => iso(r.due_date))).toEqual(after.map((r) => iso(r.due_date)));
+    // Mudar o vencimento seguindo as próximas leva as pré-pagas junto.
+    const open = (await rows<{ id: number }>(ana, `select id from public.v_pf_schedule where plan_id = $1 and number = 4`, [p]))[0]!;
+    await env.as(ana, (s) => s.rpc('pf_set_schedule_due', { p_schedule_id: open.id, p_date: '2027-08-10', p_following: true }));
+    expect((await list()).slice(0, 5).map((r) => iso(r.due_date))).toEqual(['2027-05-10', '2027-06-10', '2027-07-10', '2027-08-10', '2027-09-10']);
     await wipe('pf_transactions', 'pf_schedule', 'pf_plans');
   });
 
