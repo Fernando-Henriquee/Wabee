@@ -5,10 +5,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader } from '@/components/ui/card';
 import { ErrorState, LoadingBlock } from '@/components/ui/states';
-import { type PfCalendarDay, usePfCalendar, usePfTransactions } from '@/data/personal';
+import { type PfCalendarDay, usePfBudget, usePfCalendar, usePfSchedule, usePfTransactions } from '@/data/personal';
 import { useMember } from '@/features/member/member-context';
 import { cn } from '@/lib/cn';
-import { addMonths, capitalize, formatDateBR, monthLabel, startOfMonth } from '@/lib/dates';
+import { addDays, addMonths, capitalize, formatDateBR, monthLabel, startOfMonth } from '@/lib/dates';
 import { formatNumber } from '@/lib/money';
 import { usePersonalActions } from './actions';
 import { PMoney } from './privacy';
@@ -43,6 +43,9 @@ export function CalendarPage() {
   const month = /^\d{4}-\d{2}$/.test(params.get('mes') ?? '') ? `${params.get('mes')}-01` : startOfMonth(today);
   const selected = params.get('dia') ?? (month === startOfMonth(today) ? today : month);
   const calendar = usePfCalendar(month);
+  const opening = usePfBudget(month);
+  // O que ficou em aberto antes deste mês (recebimentos e contas ainda não baixados) também mexe no saldo.
+  const carried = usePfSchedule({ to: addDays(month, -1), status: 'PREVISTO' });
   const { hidden } = usePrivacy();
   const { openAdd } = usePersonalActions();
 
@@ -66,14 +69,51 @@ export function CalendarPage() {
     return { spent, average: past.length > 0 ? spent / past.length : 0, inside, spendingDays: withSpending.length };
   }, [calendar.data]);
 
+  // Entradas e saídas do mês: o que já aconteceu mais o que está previsto (vencimentos ainda em aberto).
+  const flow = useMemo(() => {
+    const all = calendar.data?.days ?? [];
+    let received = 0;
+    let toReceive = 0;
+    let paid = 0;
+    let toPay = 0;
+    for (const d of all) {
+      received += d.income;
+      paid += d.spent + d.paid_bills;
+      for (const b of d.bills) {
+        if (b.status !== 'PREVISTO') continue;
+        if (b.kind === 'ENTRADA_FIXA') toReceive += b.amount;
+        else toPay += b.amount;
+      }
+    }
+    const income = received + toReceive;
+    const expense = paid + toPay;
+    return { received, toReceive, income, paid, toPay, expense };
+  }, [calendar.data]);
+
   if (calendar.isError) return <ErrorState error={calendar.error} onRetry={() => void calendar.refetch()} />;
 
   const days = calendar.data?.days ?? [];
   const lead = days[0] ? weekday(days[0].date) : 0;
   const current = days.find((d) => d.date === selected) ?? null;
 
+  const startBalance =
+    opening.data && carried.data ? opening.data.balance + carried.data.reduce((sum, r) => sum + (r.plan_kind === 'ENTRADA_FIXA' ? r.amount : -r.amount), 0) : undefined;
+  const endBalance = startBalance === undefined ? null : startBalance + flow.income - flow.expense;
+
   return (
     <div className="space-y-5">
+      <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3" aria-label={`Resumo de ${monthLabel(month)}`}>
+        <FlowCard className="col-span-2 sm:col-span-1" label="Saldo no fim do mês" loading={endBalance === null || !calendar.data} hint={startBalance === undefined ? undefined : <>Saldo no início do mês <PMoney value={startBalance} /></>}>
+          <PMoney value={endBalance ?? 0} className={cn((endBalance ?? 0) < 0 && 'text-danger')} />
+        </FlowCard>
+        <FlowCard label="Entradas do mês" loading={!calendar.data} hint={<>recebido <PMoney value={flow.received} /> · a receber <PMoney value={flow.toReceive} /></>}>
+          <PMoney value={flow.income} className="text-success" />
+        </FlowCard>
+        <FlowCard label="Saídas do mês" loading={!calendar.data} hint={<>pago <PMoney value={flow.paid} /> · a pagar <PMoney value={flow.toPay} /></>}>
+          <PMoney value={flow.expense} />
+        </FlowCard>
+      </dl>
+
       <Card>
         <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2.5">
           <Button variant="ghost" size="icon-sm" aria-label="Mês anterior" onClick={() => go(-1)}>
@@ -167,6 +207,16 @@ export function CalendarPage() {
           </dl>
         </Card>
       </div>
+    </div>
+  );
+}
+
+function FlowCard({ label, hint, loading, className, children }: { label: string; hint?: React.ReactNode; loading?: boolean; className?: string; children: React.ReactNode }) {
+  return (
+    <div className={cn('rounded-xl border border-line bg-panel p-3', className)}>
+      <dt className="text-xs text-muted">{label}</dt>
+      <dd className="mt-0.5 text-xl font-semibold">{loading ? <span className="text-muted">…</span> : children}</dd>
+      {!loading && hint ? <p className="mt-0.5 text-xs text-muted">{hint}</p> : null}
     </div>
   );
 }

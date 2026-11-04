@@ -240,12 +240,13 @@ export function usePfPlan(id: number | undefined) {
   );
 }
 
-export function usePfSchedule(filter: { from?: string; to?: string; planId?: number }, enabled = true) {
+export function usePfSchedule(filter: { from?: string; to?: string; planId?: number; status?: PfScheduleStatus }, enabled = true) {
   return useAppQuery(
     ['pf', 'schedule', filter],
     () => {
       let query = from('v_pf_schedule').select('*').order('due_date').order('id');
       if (filter.planId) query = query.eq('plan_id', filter.planId);
+      if (filter.status) query = query.eq('status', filter.status);
       if (filter.from) query = query.gte('due_date', filter.from);
       if (filter.to) query = query.lte('due_date', filter.to);
       return unwrap<PfScheduleRow[]>(query);
