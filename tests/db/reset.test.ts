@@ -13,6 +13,8 @@ const rid = () => crypto.randomUUID();
 const KEPT = [
   'app_members', 'profiles', 'settings', 'sales_channels', 'sales_channel_fees', 'cost_rates', 'financial_categories',
   'equipment', 'suppliers', 'customers', 'payment_accounts',
+  // Finanças pessoais: separadas da empresa e fora do reset.
+  'pf_spaces', 'pf_space_members', 'pf_accounts', 'pf_categories', 'pf_plans', 'pf_schedule', 'pf_transactions', 'pf_word_rules',
 ];
 
 async function count(table: string) {
