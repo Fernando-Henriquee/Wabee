@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader } from '@/components/ui/card';
 import { ErrorState, LoadingBlock } from '@/components/ui/states';
-import { type PfCalendarDay, usePfBudget, usePfCalendar, usePfSchedule, usePfTransactions } from '@/data/personal';
+import { type PfCalendarDay, usePfBudget, usePfCalendar, usePfPlans, usePfSchedule, usePfTransactions } from '@/data/personal';
 import { useMember } from '@/features/member/member-context';
 import { cn } from '@/lib/cn';
 import { addDays, addMonths, capitalize, formatDateBR, monthLabel, startOfMonth } from '@/lib/dates';
@@ -44,6 +44,7 @@ export function CalendarPage() {
   const selected = params.get('dia') ?? (month === startOfMonth(today) ? today : month);
   const calendar = usePfCalendar(month);
   const opening = usePfBudget(month);
+  const plans = usePfPlans();
   // O que ficou em aberto antes deste mês (recebimentos e contas ainda não baixados) também mexe no saldo.
   const carried = usePfSchedule({ to: addDays(month, -1), status: 'PREVISTO' });
   const { hidden } = usePrivacy();
@@ -90,6 +91,18 @@ export function CalendarPage() {
     return { received, toReceive, income, paid, toPay, expense };
   }, [calendar.data]);
 
+  // Dívida total: o que falta pagar de parcelado, cartão parcelado, empréstimo e financiamento (conta fixa fica de fora).
+  const debt = useMemo(() => {
+    const open = (plans.data ?? []).filter((p) => p.status === 'ATIVO' && (p.kind === 'PARCELADO' || p.kind === 'FINANCIAMENTO') && p.open_count > 0);
+    const lastDue = open.reduce<string | null>((latest, p) => (p.last_due && (!latest || p.last_due > latest) ? p.last_due : latest), null);
+    return {
+      total: open.reduce((sum, p) => sum + p.remaining_amount, 0),
+      installments: open.reduce((sum, p) => sum + p.open_count, 0),
+      contracts: open.length,
+      lastDue,
+    };
+  }, [plans.data]);
+
   if (calendar.isError) return <ErrorState error={calendar.error} onRetry={() => void calendar.refetch()} />;
 
   const days = calendar.data?.days ?? [];
@@ -102,8 +115,8 @@ export function CalendarPage() {
 
   return (
     <div className="space-y-5">
-      <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3" aria-label={`Resumo de ${monthLabel(month)}`}>
-        <FlowCard className="col-span-2 sm:col-span-1" label="Saldo no fim do mês" loading={endBalance === null || !calendar.data} hint={startBalance === undefined ? undefined : <>Saldo no início do mês <PMoney value={startBalance} /></>}>
+      <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label={`Resumo de ${monthLabel(month)}`}>
+        <FlowCard className="col-span-2 lg:col-span-1" label="Saldo no fim do mês" loading={endBalance === null || !calendar.data} hint={startBalance === undefined ? undefined : <>Saldo no início do mês <PMoney value={startBalance} /></>}>
           <PMoney value={endBalance ?? 0} className={cn((endBalance ?? 0) < 0 && 'text-danger')} />
         </FlowCard>
         <FlowCard label="Entradas do mês" loading={!calendar.data} hint={<>recebido <PMoney value={flow.received} /> · a receber <PMoney value={flow.toReceive} /></>}>
@@ -111,6 +124,23 @@ export function CalendarPage() {
         </FlowCard>
         <FlowCard label="Saídas do mês" loading={!calendar.data} hint={<>pago <PMoney value={flow.paid} /> · a pagar <PMoney value={flow.toPay} /></>}>
           <PMoney value={flow.expense} />
+        </FlowCard>
+        <FlowCard
+          className="col-span-2 lg:col-span-1"
+          label="Dívida em parcelas"
+          loading={!plans.data}
+          hint={
+            debt.contracts === 0 ? (
+              'Nenhuma parcela em aberto.'
+            ) : (
+              <>
+                {debt.installments} {debt.installments === 1 ? 'parcela' : 'parcelas'} em {debt.contracts} {debt.contracts === 1 ? 'cadastro' : 'cadastros'}
+                {debt.lastDue ? ` · última em ${formatDateBR(debt.lastDue).slice(3)}` : ''}
+              </>
+            )
+          }
+        >
+          <PMoney value={debt.total} className={cn(debt.total > 0 && 'text-danger')} />
         </FlowCard>
       </dl>
 
