@@ -570,9 +570,10 @@ function WorkbenchForm({
           <Field label="Descrição para o cliente" hint="Material, acabamento, o que está incluso. Tamanho, cor e quantidade entram sozinhos.">
             <Textarea value={description} onChange={(e) => setDescription(e.target.value)} maxLength={2000} className="min-h-20" placeholder="Ex.: Moto esportiva em PLA, acabamento liso, pintura não inclusa." />
           </Field>
-          <Field label="Texto da mensagem" hint={`Atualiza sozinho com o valor combinado e os dados acima. ${settings.pix_key ? 'Já inclui o PIX cadastrado em Configurações.' : 'Cadastre a chave PIX em Configurações para ela entrar no texto.'}`}>
+          <Field label="Texto da mensagem" hint={`Só leitura: atualiza sozinho com o que você preenche acima. ${settings.pix_key ? 'Já inclui o PIX cadastrado em Configurações.' : 'Cadastre a chave PIX em Configurações para ela entrar no texto.'}`}>
             <Textarea value={message} readOnly className="min-h-44 bg-subtle text-sm" onFocus={(e) => e.currentTarget.select()} />
           </Field>
+          {priceNumber <= 0 ? <p className="text-xs text-warning">Falta o valor da venda combinado: preencha o campo acima para ele entrar no texto.</p> : null}
           {!settings.pix_key ? (
             <p className="text-xs text-warning">
               Sem chave PIX: a proposta sai sem o bloco de pagamento.{' '}

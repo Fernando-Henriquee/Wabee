@@ -294,7 +294,7 @@ function CompanyFormView({ initial }: { initial: CompanyForm }) {
           <Field label="Chave PIX" error={pixKeyProblem(form.pix_key_type, form.pix_key)}>
             <Input value={form.pix_key} onChange={(e) => set('pix_key', e.target.value)} maxLength={140} placeholder="storewabee@gmail.com" autoCapitalize="none" spellCheck={false} />
           </Field>
-          <Field label="Nome do titular" hint="Opcional. Aparece ao lado da chave na proposta.">
+          <Field label="Nome do titular" hint="Opcional. Não entra no texto da proposta.">
             <Input value={form.pix_holder} onChange={(e) => set('pix_holder', e.target.value)} maxLength={100} placeholder={form.company_name} />
           </Field>
           <Field label="Retorno de orçamento sem resposta" hint="Dias até o sistema lembrar de procurar o cliente de novo. Você pode escolher outra data em cada orçamento.">

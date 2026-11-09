@@ -1,7 +1,7 @@
 import type { QuoteRow } from '@/data/quotes';
 import { formatDateBR } from '@/lib/dates';
 import { formatBRL } from '@/lib/money';
-import { PIX_KEY_TYPE_LABELS, type PixKeyType, pixKeyForPayment } from '@/lib/pix';
+import { type PixKeyType, pixKeyForPayment } from '@/lib/pix';
 
 /** Textos prontos do WhatsApp: a proposta (com o PIX) e as mensagens para retomar quem não respondeu. */
 
@@ -61,12 +61,10 @@ export function priceLine(unitPrice: number, qty: number): string {
   return `${money(unitPrice)} cada (${qty} peças = ${money(Math.round(unitPrice * qty * 100) / 100)})`;
 }
 
-/** Bloco de pagamento: a chave numa linha só, para copiar com um toque. */
+/** Bloco de pagamento: só a chave, numa linha própria, para copiar com um toque. */
 export function pixBlock(pix: PixInfo | null): string | null {
   if (!pix || !pix.key.trim()) return null;
-  const lines = ['Pagamento via PIX:', pixKeyForPayment(pix.type, pix.key)];
-  lines.push(pix.holder?.trim() ? `(${PIX_KEY_TYPE_LABELS[pix.type]} · titular: ${pix.holder.trim()})` : `(${PIX_KEY_TYPE_LABELS[pix.type]})`);
-  return lines.join('\n');
+  return ['Pagamento via PIX:', pixKeyForPayment(pix.type, pix.key)].join('\n');
 }
 
 const details = (ctx: QuoteMessageContext) =>

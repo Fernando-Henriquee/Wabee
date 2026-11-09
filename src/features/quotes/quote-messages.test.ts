@@ -22,7 +22,8 @@ describe('proposalMessage', () => {
     expect(text).toContain('Tamanho: 20 cm · Cor: vermelha');
     expect(text).toContain('Valor combinado: R$ 35,50');
     expect(text).toContain('Válido até 10/11/2026.');
-    expect(text).toContain('Pagamento via PIX:\nstorewabee@gmail.com\n(E-mail)');
+    expect(text).toContain('Pagamento via PIX:\nstorewabee@gmail.com');
+    expect(text).not.toContain('(E-mail');
   });
 
   it('com várias peças mostra o valor de cada e o total', () => {
@@ -42,8 +43,8 @@ describe('proposalMessage', () => {
 });
 
 describe('pixBlock', () => {
-  it('mostra o titular e formata telefone para pagamento', () => {
-    expect(pixBlock({ key: '(11) 98888-7777', type: 'TELEFONE', holder: 'Wabee 3D' })).toBe('Pagamento via PIX:\n+5511988887777\n(Telefone · titular: Wabee 3D)');
+  it('traz só a chave (telefone formatado para pagamento), sem tipo nem titular', () => {
+    expect(pixBlock({ key: '(11) 98888-7777', type: 'TELEFONE', holder: 'Wabee 3D' })).toBe('Pagamento via PIX:\n+5511988887777');
     expect(pixBlock(null)).toBeNull();
   });
 });
