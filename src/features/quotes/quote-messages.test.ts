@@ -20,13 +20,13 @@ describe('proposalMessage', () => {
     expect(text).toContain('Oi, João! Aqui é da Wabee.');
     expect(text).toContain('Segue o orçamento: Moto 3D.');
     expect(text).toContain('Tamanho: 20 cm · Cor: vermelha');
-    expect(text).toContain('Valor: R$ 35,50');
+    expect(text).toContain('Valor combinado: R$ 35,50');
     expect(text).toContain('Válido até 10/11/2026.');
     expect(text).toContain('Pagamento via PIX:\nstorewabee@gmail.com\n(E-mail)');
   });
 
   it('com várias peças mostra o valor de cada e o total', () => {
-    expect(proposalMessage({ ...ctx, qty: 3, unitPrice: 33.33 })).toContain('Valor: R$ 33,33 cada (3 peças = R$ 99,99)');
+    expect(proposalMessage({ ...ctx, qty: 3, unitPrice: 33.33 })).toContain('Valor combinado: R$ 33,33 cada (3 peças = R$ 99,99)');
   });
 
   it('sem chave PIX não traz o bloco de pagamento', () => {

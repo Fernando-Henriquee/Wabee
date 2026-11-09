@@ -79,7 +79,7 @@ export function proposalMessage(ctx: QuoteMessageContext): string {
     `Segue o orçamento: ${ctx.item}.`,
     ctx.description?.trim() || null,
     details(ctx) || null,
-    ctx.unitPrice !== null ? `Valor: ${priceLine(ctx.unitPrice, ctx.qty)}` : null,
+    ctx.unitPrice !== null ? `Valor combinado: ${priceLine(ctx.unitPrice, ctx.qty)}` : null,
     ctx.validUntil ? `Válido até ${formatDateBR(ctx.validUntil)}.` : null,
     pixBlock(ctx.pix),
     'Se estiver tudo certo, é só me avisar que já começo a produzir!',

@@ -117,6 +117,40 @@ describe('análise e proposta', () => {
   });
 });
 
+describe('valor combinado salvo e imagens da proposta', () => {
+  it('save_quote_proposal guarda valor, validade, descrição e imagens sem enviar a proposta', async () => {
+    const id = await create({ qty: 2 });
+    const validUntil = await plusDays(5);
+    await env.as(dono, (s) =>
+      s.rpc('save_quote_proposal', { p_quote_id: id, p_unit_price: 42.9, p_valid_until: validUntil, p_description: 'Acabamento liso', p_photo_paths: ['quotes/a.jpg', 'quotes/b.jpg'] }),
+    );
+    const q = await quote(id);
+    expect(q).toMatchObject({ status: 'NOVO', proposal_description: 'Acabamento liso', proposal_photo_paths: ['quotes/a.jpg', 'quotes/b.jpg'], follow_up_at: null, quoted_at: null });
+    expect(n(q.quoted_unit_price as number)).toBe(42.9);
+    expect(n(q.quoted_total as number)).toBe(85.8);
+    expect((await events(id)).map((e) => e.kind)).toEqual(['NOTA']);
+  });
+
+  it('valor em branco limpa o valor; sem lista de imagens mantém as atuais; recusa mais de 3 e valor zero', async () => {
+    const id = await create();
+    await env.as(dono, (s) => s.rpc('save_quote_proposal', { p_quote_id: id, p_unit_price: 10, p_photo_paths: ['quotes/a.jpg'] }));
+    await env.as(dono, (s) => s.rpc('save_quote_proposal', { p_quote_id: id, p_unit_price: null }));
+    expect(await quote(id)).toMatchObject({ quoted_unit_price: null, proposal_photo_paths: ['quotes/a.jpg'] });
+    await expect(env.as(dono, (s) => s.rpc('save_quote_proposal', { p_quote_id: id, p_photo_paths: ['quotes/1.jpg', 'quotes/2.jpg', 'quotes/3.jpg', 'quotes/4.jpg'] }))).rejects.toThrow(/no máximo 3/);
+    await expect(env.as(dono, (s) => s.rpc('save_quote_proposal', { p_quote_id: id, p_unit_price: 0 }))).rejects.toThrow(/maior que zero/);
+    await expect(env.as(leitura, (s) => s.rpc('save_quote_proposal', { p_quote_id: id, p_unit_price: 5 }))).rejects.toThrow(/permissão/);
+  });
+
+  it('send_quote leva as imagens da proposta (ou mantém as já salvas)', async () => {
+    const id = await create();
+    await env.as(dono, (s) => s.rpc('save_quote_proposal', { p_quote_id: id, p_unit_price: 30, p_photo_paths: ['quotes/a.jpg'] }));
+    await env.as(dono, (s) => s.rpc('send_quote', { p_quote_id: id, p_unit_price: 30 }));
+    expect((await quote(id)).proposal_photo_paths).toEqual(['quotes/a.jpg']);
+    await env.as(dono, (s) => s.rpc('send_quote', { p_quote_id: id, p_unit_price: 30, p_photo_paths: ['quotes/b.jpg', 'quotes/c.jpg'] }));
+    expect(await quote(id)).toMatchObject({ status: 'PROPOSTA_ENVIADA', proposal_photo_paths: ['quotes/b.jpg', 'quotes/c.jpg'] });
+  });
+});
+
 describe('retomar quem não respondeu', () => {
   it('log_quote_contact conta o contato e reagenda; set_quote_follow_up só adia', async () => {
     const id = await create();

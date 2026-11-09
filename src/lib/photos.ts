@@ -30,13 +30,17 @@ export async function resizePhoto(file: File): Promise<Blob> {
   }
 }
 
-/** Envia a foto já reduzida e devolve o caminho no bucket (guardado em photo_path). */
-export async function uploadPhoto(folder: PhotoFolder, file: File): Promise<string> {
-  const blob = await resizePhoto(file);
+/** Envia uma imagem já reduzida (resizePhoto) e devolve o caminho no bucket. */
+export async function uploadPhotoBlob(folder: PhotoFolder, blob: Blob): Promise<string> {
   const path = `${folder}/${crypto.randomUUID()}.jpg`;
   const { error } = await supabase.storage.from(PHOTO_BUCKET).upload(path, blob, { contentType: 'image/jpeg', cacheControl: '31536000' });
   if (error) throw new Error(`Não foi possível enviar a foto: ${error.message}`);
   return path;
+}
+
+/** Reduz a foto e a envia; devolve o caminho no bucket (guardado em photo_path). */
+export async function uploadPhoto(folder: PhotoFolder, file: File): Promise<string> {
+  return uploadPhotoBlob(folder, await resizePhoto(file));
 }
 
 /** Escolha feita no formulário: arquivo novo, remoção ou nada (mantém a foto atual). */

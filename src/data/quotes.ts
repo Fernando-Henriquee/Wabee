@@ -75,6 +75,8 @@ export interface QuoteRow {
   analysis: QuoteAnalysis | null;
   cost_estimate: CustomItemPreview | null;
   proposal_description: string | null;
+  /** Até 3 imagens que acompanham a proposta (caminhos no bucket). */
+  proposal_photo_paths: string[];
   quoted_unit_price: number | null;
   quoted_at: string | null;
   valid_until: string | null;
@@ -159,10 +161,33 @@ export function useAnalyzeQuote(onDone?: (preview: CustomItemPreview | null) => 
 }
 
 export function useSendQuote(onDone?: () => void) {
-  return useWrite<{ quoteId: number; unitPrice: string; validUntil: string | null; description: string | null; followUpAt?: string | null }>({
+  return useWrite<{ quoteId: number; unitPrice: string; validUntil: string | null; description: string | null; photoPaths?: string[]; followUpAt?: string | null }>({
     mutationFn: (v) =>
-      rpc('send_quote', { p_quote_id: v.quoteId, p_unit_price: v.unitPrice, p_valid_until: v.validUntil, p_description: v.description, p_follow_up_at: v.followUpAt ?? null }),
+      rpc('send_quote', {
+        p_quote_id: v.quoteId,
+        p_unit_price: v.unitPrice,
+        p_valid_until: v.validUntil,
+        p_description: v.description,
+        p_follow_up_at: v.followUpAt ?? null,
+        p_photo_paths: v.photoPaths ?? null,
+      }),
     success: 'Proposta registrada. O sistema avisa quando for hora de procurar o cliente.',
+    onSuccess: () => onDone?.(),
+  });
+}
+
+/** Salva o valor combinado, a validade, a descrição e as imagens sem enviar a proposta. */
+export function useSaveQuoteProposal(onDone?: () => void) {
+  return useWrite<{ quoteId: number; unitPrice: string | null; validUntil: string | null; description: string | null; photoPaths: string[] }>({
+    mutationFn: (v) =>
+      rpc('save_quote_proposal', {
+        p_quote_id: v.quoteId,
+        p_unit_price: v.unitPrice,
+        p_valid_until: v.validUntil,
+        p_description: v.description,
+        p_photo_paths: v.photoPaths,
+      }),
+    success: 'Valor combinado salvo.',
     onSuccess: () => onDone?.(),
   });
 }

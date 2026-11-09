@@ -1,4 +1,4 @@
-import { ArrowLeft, CalendarClock, ClipboardCopy, Link2, MessageCircle, MoreHorizontal, Pencil, PhoneCall, RotateCcw, Save, ShoppingBag, Send, XCircle } from 'lucide-react';
+import { ArrowLeft, CalendarClock, ClipboardCopy, Images, Link2, MessageCircle, MoreHorizontal, Pencil, PhoneCall, RotateCcw, Save, ShoppingBag, Send, XCircle } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
@@ -23,6 +23,7 @@ import {
   useAnalyzeQuote,
   useQuote,
   useQuoteEvents,
+  useSaveQuoteProposal,
   useSendQuote,
   useSetQuoteStatus,
 } from '@/data/quotes';
@@ -37,7 +38,11 @@ import { describeError } from '@/lib/errors';
 import { formatDateBR, formatDateTimeBR, isValidISODate } from '@/lib/dates';
 import { formatBRL, toNumber } from '@/lib/money';
 import { photoUrl } from '@/lib/photo-url';
+import { removePhoto } from '@/lib/photos';
+import { canShareFiles } from '@/lib/share-images';
 import { useRequestId } from '@/lib/use-request-id';
+import { ProposalPhotosField } from './proposal-photos';
+import { useProposalPhotos } from './use-proposal-photos';
 import { ContactDialog, FollowUpDialog, LostDialog, QuoteFormDialog } from './quote-dialogs';
 import { ContactButtons, FollowUpText, QuoteStatusBadge } from './quote-bits';
 import { lostReasonText, quoteSummary } from './quote-utils';
@@ -280,6 +285,8 @@ function WorkbenchForm({
   const [validUntil, setValidUntil] = useState(quote.valid_until ?? '');
   const [description, setDescription] = useState(quote.proposal_description ?? '');
   const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const photos = useProposalPhotos(quote.proposal_photo_paths ?? []);
   const [requestId, renew] = useRequestId();
   const set = <K extends keyof AnalysisForm>(key: K, value: AnalysisForm[K]) => setForm((f) => ({ ...f, [key]: value }));
 
@@ -307,6 +314,7 @@ function WorkbenchForm({
 
   const saveAnalysis = useAnalyzeQuote();
   const send = useSendQuote();
+  const saveProposal = useSaveQuoteProposal();
   const createItem = useCreateCustomItem();
 
   const priceNumber = toNumber(price);
@@ -325,11 +333,60 @@ function WorkbenchForm({
     return null;
   };
 
-  const registerSend = (after?: () => void) => {
-    send.mutate(
-      { quoteId: quote.id, unitPrice: String(price), validUntil: validUntil || null, description: description.trim() || null },
-      { onSuccess: after, onError: (e) => setError(describeError(e)) },
-    );
+  const savedPaths = quote.proposal_photo_paths ?? [];
+  const proposalDirty =
+    (priceNumber > 0 ? priceNumber : 0) !== (quote.quoted_unit_price ?? 0) ||
+    validUntil !== (quote.valid_until ?? '') ||
+    description.trim() !== (quote.proposal_description ?? '') ||
+    photos.dirty(savedPaths);
+
+  /** Envia as imagens novas e grava a proposta (registrando o envio, ou só guardando o valor combinado). */
+  const persistProposal = async (mode: 'send' | 'draft') => {
+    setError(null);
+    setUploading(true);
+    let result: Awaited<ReturnType<typeof photos.upload>>;
+    try {
+      result = await photos.upload();
+    } catch (e) {
+      setUploading(false);
+      return setError(describeError(e));
+    }
+    setUploading(false);
+    const { paths, uploaded } = result;
+    const common = { quoteId: quote.id, validUntil: validUntil || null, description: description.trim() || null, photoPaths: paths };
+    const options = {
+      onSuccess: () => void Promise.all(savedPaths.filter((p) => !paths.includes(p)).map((p) => removePhoto(p))),
+      onError: (e: Error) => {
+        void Promise.all(uploaded.map((p) => removePhoto(p)));
+        setError(describeError(e));
+      },
+    };
+    if (mode === 'send') send.mutate({ ...common, unitPrice: String(price) }, options);
+    else saveProposal.mutate({ ...common, unitPrice: priceNumber > 0 ? String(price) : null }, options);
+  };
+
+  const registerSend = () => void persistProposal('send');
+
+  const saveDraft = () => {
+    if (validUntil && validUntil !== quote.valid_until && (!isValidISODate(validUntil) || validUntil < today())) return setError('A validade da proposta precisa ser de hoje em diante.');
+    void persistProposal('draft');
+  };
+
+  const saving = uploading || send.isPending || saveProposal.isPending;
+
+  /** Celular: abre o menu de compartilhar com as imagens e o texto juntos (o dono escolhe o WhatsApp e a conversa). */
+  const shareWithPhotos = async () => {
+    setError(null);
+    const problem = validateProposal();
+    if (problem) return setError(problem);
+    if (!photos.allReady) return setError('As imagens ainda estão carregando. Tente de novo em um instante.');
+    try {
+      await navigator.share({ files: photos.files, text: message });
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return;
+      return setError('Não foi possível abrir o compartilhamento. Baixe ou copie as imagens e cole na conversa.');
+    }
+    registerSend();
   };
 
   const sendWhatsApp = () => {
@@ -486,28 +543,34 @@ function WorkbenchForm({
       <Card>
         <CardHeader
           title="Proposta"
-          description={quote.quoted_at ? `Última proposta registrada em ${formatDateBR(quote.quoted_at.slice(0, 10))}.` : 'Preço, validade e o texto que vai para o cliente.'}
+          description={quote.quoted_at ? `Última proposta registrada em ${formatDateBR(quote.quoted_at.slice(0, 10))}.` : 'Valor combinado, validade, imagens e o texto que vai para o cliente.'}
+          actions={
+            write ? (
+              <Button size="sm" variant={proposalDirty ? 'primary' : 'outline'} loading={saving} disabled={!proposalDirty} onClick={saveDraft}>
+                <Save /> Salvar valor combinado
+              </Button>
+            ) : undefined
+          }
         />
         <fieldset disabled={!write} className="space-y-4 p-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Field label={quote.qty > 1 ? 'Preço por peça' : 'Preço'} required hint={suggested !== null && price === null ? `Sugerido: ${formatBRL(suggested)}` : undefined}>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label={quote.qty > 1 ? 'Valor da venda combinado (por peça)' : 'Valor da venda combinado'} hint={suggested !== null && price === null ? `Sugerido: ${formatBRL(suggested)}` : undefined}>
               <MoneyInput value={price} onValueChange={setPrice} placeholder={suggested !== null ? formatBRL(suggested) : 'R$'} />
             </Field>
             <Field label="Válida até">
               <Input type="date" min={today()} value={validUntil} onChange={(e) => setValidUntil(e.target.value)} />
             </Field>
-            <div className="text-sm sm:pt-7">
-              {quote.qty > 1 && priceNumber > 0 ? (
-                <p>
-                  {quote.qty} peças = <strong className="num">{formatBRL(Math.round(priceNumber * quote.qty * 100) / 100)}</strong>
-                </p>
-              ) : null}
-            </div>
+            {quote.qty > 1 && priceNumber > 0 ? (
+              <p className="text-sm sm:col-span-2">
+                {quote.qty} peças = <strong className="num">{formatBRL(Math.round(priceNumber * quote.qty * 100) / 100)}</strong>
+              </p>
+            ) : null}
           </div>
+          <ProposalPhotosField photos={photos} name={quote.number} editable={write} />
           <Field label="Descrição para o cliente" hint="Material, acabamento, o que está incluso. Tamanho, cor e quantidade entram sozinhos.">
             <Textarea value={description} onChange={(e) => setDescription(e.target.value)} maxLength={2000} className="min-h-20" placeholder="Ex.: Moto esportiva em PLA, acabamento liso, pintura não inclusa." />
           </Field>
-          <Field label="Texto da mensagem" hint={settings.pix_key ? 'Já inclui o PIX cadastrado em Configurações.' : 'Cadastre a chave PIX em Configurações para ela entrar no texto.'}>
+          <Field label="Texto da mensagem" hint={`Atualiza sozinho com o valor combinado e os dados acima. ${settings.pix_key ? 'Já inclui o PIX cadastrado em Configurações.' : 'Cadastre a chave PIX em Configurações para ela entrar no texto.'}`}>
             <Textarea value={message} readOnly className="min-h-44 bg-subtle text-sm" onFocus={(e) => e.currentTarget.select()} />
           </Field>
           {!settings.pix_key ? (
@@ -528,15 +591,20 @@ function WorkbenchForm({
         ) : null}
         {write ? (
           <div className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-3">
-            <Button onClick={sendWhatsApp} loading={send.isPending} disabled={!phone} title={phone ? undefined : 'Anote o WhatsApp do cliente'}>
+            <Button onClick={sendWhatsApp} loading={saving} disabled={!phone} title={phone ? undefined : 'Anote o WhatsApp do cliente'}>
               <MessageCircle /> {quote.status === 'PROPOSTA_ENVIADA' ? 'Reenviar pelo WhatsApp' : 'Enviar pelo WhatsApp'}
             </Button>
-            <Button variant="outline" onClick={() => void copyText()} disabled={send.isPending}>
+            {canShareFiles(photos.files) ? (
+              <Button variant="outline" onClick={() => void shareWithPhotos()} disabled={saving}>
+                <Images /> Enviar com imagens
+              </Button>
+            ) : null}
+            <Button variant="outline" onClick={() => void copyText()} disabled={saving}>
               <ClipboardCopy /> Copiar texto
             </Button>
             <Button
               variant="ghost"
-              disabled={send.isPending}
+              disabled={saving}
               onClick={() => {
                 setError(null);
                 const problem = validateProposal();
