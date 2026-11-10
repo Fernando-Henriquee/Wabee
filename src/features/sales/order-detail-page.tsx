@@ -1,4 +1,4 @@
-import { AlertTriangle, Ban, CheckCircle2, ClipboardCopy, Gift, Lock, MessageCircle, MoreHorizontal, Pencil, Printer, RotateCcw, Truck, Unlock, Wallet } from 'lucide-react';
+import { AlertTriangle, Ban, CalendarClock, CheckCircle2, ClipboardCopy, Gift, Lock, MessageCircle, MoreHorizontal, Pencil, Printer, RotateCcw, Truck, Unlock, Wallet } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { toast } from 'sonner';
@@ -32,6 +32,7 @@ import { formatDateBR, formatDateTimeBR } from '@/lib/dates';
 import { formatBRL, formatNumber, formatPercent, toNumber } from '@/lib/money';
 import { useRequestId } from '@/lib/use-request-id';
 import { currentFee, estimateMargin, orderSummaryText } from './cart';
+import { OrderDueDateDialog, ReceivableDueDateDialog } from './due-date-dialogs';
 import { CancelOrderDialog, DeliverDialog, ProduceOrderDialog, ReservationDialog } from './order-dialogs';
 import { BackLink, OrderKindBadge, OrderStatusBadge, ValueRow } from './sales-bits';
 import { localDate, whatsappLink } from './sales-utils';
@@ -70,6 +71,8 @@ type DialogState =
   | { kind: 'reserve' | 'release'; line: SalesOrderLineRow }
   | { kind: 'receive'; installment: InstallmentRow }
   | { kind: 'reverse'; installment: InstallmentRow }
+  | { kind: 'order-due' }
+  | { kind: 'installment-due'; installment: InstallmentRow }
   | null;
 
 function OrderDetail({ order }: { order: SalesOrderRow }) {
@@ -180,6 +183,11 @@ function OrderDetail({ order }: { order: SalesOrderRow }) {
               <a href={whatsappLink(order.customer_phone, summaryText()) ?? wa} target="_blank" rel="noreferrer">
                 <MessageCircle /> Enviar no WhatsApp do cliente
               </a>
+            </MenuItem>
+          ) : null}
+          {write && !['ENTREGUE', 'CANCELADO'].includes(order.status) && !order.is_historical ? (
+            <MenuItem onSelect={() => setDialog({ kind: 'order-due' })}>
+              <CalendarClock /> Alterar prazo de entrega
             </MenuItem>
           ) : null}
           {canCancel ? (
@@ -391,6 +399,7 @@ function OrderDetail({ order }: { order: SalesOrderRow }) {
                     historical={order.is_historical}
                     onReceive={() => setDialog({ kind: 'receive', installment: i })}
                     onReverse={() => setDialog({ kind: 'reverse', installment: i })}
+                    onChangeDate={() => setDialog({ kind: 'installment-due', installment: i })}
                   />
                 ))}
               </ul>
@@ -425,6 +434,16 @@ function OrderDetail({ order }: { order: SalesOrderRow }) {
             const next = (installments.data ?? []).find((i) => i.status === 'ABERTA');
             if (next) setDialog({ kind: 'receive', installment: next });
           }}
+        />
+      ) : null}
+      {dialog?.kind === 'order-due' ? <OrderDueDateDialog orderId={order.id} number={order.number} current={order.due_date} onOpenChange={(o) => !o && close()} /> : null}
+      {dialog?.kind === 'installment-due' ? (
+        <ReceivableDueDateDialog
+          key={dialog.installment.id}
+          installmentId={dialog.installment.id}
+          label={`Pedido ${order.number} · ${dialog.installment.of_total > 1 ? `parcela ${dialog.installment.number}/${dialog.installment.of_total}` : 'parcela única'} (${formatBRL(dialog.installment.amount)})`}
+          current={dialog.installment.due_date}
+          onOpenChange={(o) => !o && close()}
         />
       ) : null}
       {dialog?.kind === 'cancel' ? <CancelOrderDialog order={order} plannedJobs={plannedJobs} open onOpenChange={(o) => !o && close()} /> : null}
@@ -534,12 +553,14 @@ function InstallmentItem({
   historical,
   onReceive,
   onReverse,
+  onChangeDate,
 }: {
   installment: InstallmentRow;
   canWrite: boolean;
   historical: boolean;
   onReceive: () => void;
   onReverse: () => void;
+  onChangeDate: () => void;
 }) {
   const status =
     i.status === 'PAGA' ? <Badge tone="success">recebida</Badge> : i.status === 'CANCELADA' ? <Badge>cancelada</Badge> : i.is_overdue ? <Badge tone="danger">vencida</Badge> : <Badge tone="warning">em aberto</Badge>;
@@ -557,9 +578,14 @@ function InstallmentItem({
       </span>
       <Money value={i.status === 'PAGA' ? i.paid_amount : i.amount} className="font-semibold" />
       {canWrite && i.status === 'ABERTA' ? (
-        <Button size="sm" onClick={onReceive}>
-          Receber
-        </Button>
+        <>
+          <Button size="sm" variant="ghost" onClick={onChangeDate} title="Corrigir a data de vencimento" aria-label="Alterar vencimento">
+            <CalendarClock />
+          </Button>
+          <Button size="sm" onClick={onReceive}>
+            Receber
+          </Button>
+        </>
       ) : null}
       {canWrite && i.status === 'PAGA' && i.account_id ? (
         <Button size="sm" variant="ghost" onClick={onReverse} title="Estornar baixa">

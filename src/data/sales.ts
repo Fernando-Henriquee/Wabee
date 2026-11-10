@@ -559,6 +559,24 @@ export function useUpdateOrderDraft() {
   });
 }
 
+/** Corrige o prazo de entrega de um pedido já confirmado (data em branco limpa o prazo). */
+export function useSetOrderDueDate(onDone?: () => void) {
+  return useWrite<{ orderId: number; date: string | null }>({
+    mutationFn: (v) => rpc('set_order_due_date', { p_order_id: v.orderId, p_date: v.date }),
+    success: 'Prazo de entrega atualizado.',
+    onSuccess: () => onDone?.(),
+  });
+}
+
+/** Corrige o vencimento de uma parcela a receber em aberto. */
+export function useSetReceivableDueDate(onDone?: () => void) {
+  return useWrite<{ installmentId: number; date: string }>({
+    mutationFn: (v) => rpc('set_receivable_due_date', { p_installment_id: v.installmentId, p_date: v.date }),
+    success: 'Vencimento atualizado.',
+    onSuccess: () => onDone?.(),
+  });
+}
+
 export function useConfirmOrder(onDone?: (result: ConfirmResult) => void) {
   return useWrite<{ requestId: string; orderId: number }, ConfirmResult>({
     mutationFn: (v) => rpc('confirm_order', { p_request_id: v.requestId, p_order_id: v.orderId }),

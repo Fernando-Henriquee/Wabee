@@ -316,8 +316,8 @@ function CompanyFormView({ initial }: { initial: CompanyForm }) {
             className="sm:col-span-2"
             checked={form.allow_negative_stock}
             onChange={(v) => set('allow_negative_stock', v)}
-            label="Permitir estoque negativo"
-            description="Desligado (recomendado): uma saída maior que o saldo livre é recusada. Ligado: a saída passa e o saldo fica negativo até você corrigir com um ajuste."
+            label="Permitir estoque negativo de insumos"
+            description="Vale só para o que a produção consome (filamento, componentes, embalagens, consumíveis). Desligado (recomendado): uma saída maior que o saldo livre é recusada. Ligado: a saída passa e o saldo fica negativo até você corrigir com um ajuste. Produto pronto para venda nunca fica negativo."
           />
           <ToggleRow
             className="sm:col-span-2"

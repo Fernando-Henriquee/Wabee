@@ -429,3 +429,68 @@ describe('item pontual criado no pedido (US-4.9)', () => {
     await expect(env.as(dono, (s) => s.rpc('create_custom_item', { p_request_id: rid(), p_item: { name: 'Sem tempo', lines: lines() } }))).rejects.toThrow(/tempo/);
   });
 });
+
+describe('pedido só com linha avulsa e estoque negativo só para insumos (10/11)', () => {
+  const confirmed = (extra: Record<string, unknown> = {}) =>
+    env.as(dono, (s) =>
+      s.rpc<{ order_id: number; status: string }>('create_order', {
+        p_request_id: rid(),
+        p_order: { kind: 'ENCOMENDA', channel_id: direct, confirm: true, due_date: '2026-12-10', ...extra },
+      }),
+    );
+
+  it('linha avulsa (sem produto) não vai para "pronto": o pedido fica CONFIRMADO', async () => {
+    const result = await confirmed({ lines: [{ custom_description: 'Espinossauro articulado', qty: 1, unit_price: 90 }] });
+    expect(result.status).toBe('CONFIRMADO');
+    expect((await order(result.order_id)).status).toBe('CONFIRMADO');
+  });
+
+  it('com a opção ligada, insumo (embalagem) pode ficar negativo, mas produto acabado nunca', async () => {
+    const caixa = await env.as(dono, (s) => s.rpc<number>('save_item', { p_item: { kind: 'PACKAGING', name: 'Caixa sem saldo' } }));
+    await env.as(dono, (s) => s.rpc('adjust_stock', { p_request_id: rid(), p_item_id: abelhaItem, p_counted_qty: 10, p_reason: 'Contagem', p_confirm_large: true }));
+    const sale = (variant: number, packaging: unknown[]) =>
+      env.as(dono, (s) => s.rpc('quick_sale', { p_request_id: rid(), p_sale: { channel_id: direct, lines: [{ variant_id: variant, qty: 1 }], packaging } }));
+    try {
+      await env.admin().query(`update public.settings set allow_negative_stock = false`);
+      await expect(sale(abelha, [{ item_id: caixa, qty: 3 }])).rejects.toThrow(/insuficiente/);
+      await env.admin().query(`update public.settings set allow_negative_stock = true`);
+      await sale(abelha, [{ item_id: caixa, qty: 3 }]);
+      expect(n((await balance(caixa)).qty_on_hand)).toBe(-3);
+      // Chaveiro Coração não tem nenhum saldo: mesmo com a opção ligada a entrega é recusada.
+      await expect(sale(coracao, [])).rejects.toThrow(/insuficiente/);
+    } finally {
+      await env.admin().query(`update public.settings set allow_negative_stock = false`);
+    }
+  });
+});
+
+describe('corrigir datas do pedido confirmado (10/11)', () => {
+  it('altera o prazo de entrega e o vencimento de parcela em aberto; recebida e entregue ficam travadas', async () => {
+    const created = await env.as(dono, (s) =>
+      s.rpc<{ order_id: number }>('create_order', {
+        p_request_id: rid(),
+        p_order: {
+          kind: 'ENCOMENDA', channel_id: direct, confirm: true, due_date: '2026-11-01',
+          lines: [{ custom_description: 'Peça', qty: 1, unit_price: 40 }],
+          payment_terms: [{ label: 'Sinal', pct: 0.5, due_date: '2026-11-02' }, { label: 'Entrega', due_date: '2026-11-03' }],
+        },
+      }),
+    );
+    const id = created.order_id;
+    await env.as(dono, (s) => s.rpc('set_order_due_date', { p_order_id: id, p_date: '2026-11-20' }));
+    expect((await env.admin().one<{ d: string }>(`select due_date::text d from public.sales_orders where id = $1`, [id])).d).toBe('2026-11-20');
+    await env.as(dono, (s) => s.rpc('set_order_due_date', { p_order_id: id, p_date: null }));
+    expect((await env.admin().one<{ d: string | null }>(`select due_date::text d from public.sales_orders where id = $1`, [id])).d).toBeNull();
+
+    const insts = await env.admin().query<{ id: number; number: number }>(
+      `select i.id, i.number from public.installments i join public.sales_orders o on o.receivable_id = i.receivable_id where o.id = $1 order by i.number`,
+      [id],
+    );
+    await env.as(dono, (s) => s.rpc('set_receivable_due_date', { p_installment_id: insts[0]!.id, p_date: '2026-11-25' }));
+    expect((await env.admin().one<{ d: string }>(`select due_date::text d from public.installments where id = $1`, [insts[0]!.id])).d).toBe('2026-11-25');
+    await expect(env.as(dono, (s) => s.rpc('set_receivable_due_date', { p_installment_id: insts[0]!.id, p_date: null }))).rejects.toThrow(/data de vencimento/);
+
+    await env.as(dono, (s) => s.rpc('receive_installment', { p_request_id: rid(), p_installment_id: insts[1]!.id, p_account_id: bank, p_received_on: '2026-11-03' }));
+    await expect(env.as(dono, (s) => s.rpc('set_receivable_due_date', { p_installment_id: insts[1]!.id, p_date: '2026-12-01' }))).rejects.toThrow(/em aberto/);
+  });
+});
