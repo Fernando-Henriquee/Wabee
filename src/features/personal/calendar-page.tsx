@@ -88,8 +88,10 @@ export function CalendarPage() {
     }
     const income = received + toReceive;
     const expense = paid + toPay;
-    return { received, toReceive, income, paid, toPay, expense };
-  }, [calendar.data]);
+    // Ajuste de saldo do 1º dia do mês já está no saldo de abertura (vale desde o início do dia).
+    const adjust = all.filter((d) => d.date !== month).reduce((sum, d) => sum + d.adjust, 0);
+    return { received, toReceive, income, paid, toPay, expense, adjust };
+  }, [calendar.data, month]);
 
   // Dívida total: o que falta pagar de parcelado, cartão parcelado, empréstimo e financiamento (conta fixa fica de fora).
   const debt = useMemo(() => {
@@ -111,7 +113,7 @@ export function CalendarPage() {
 
   const startBalance =
     opening.data && carried.data ? opening.data.balance + carried.data.reduce((sum, r) => sum + (r.plan_kind === 'ENTRADA_FIXA' ? r.amount : -r.amount), 0) : undefined;
-  const endBalance = startBalance === undefined ? null : startBalance + flow.income - flow.expense;
+  const endBalance = startBalance === undefined ? null : startBalance + flow.income - flow.expense + flow.adjust;
 
   return (
     <div className="space-y-5">

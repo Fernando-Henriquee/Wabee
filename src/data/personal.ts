@@ -7,7 +7,7 @@ import { useAppQuery, useWrite } from './hooks';
  */
 
 export type PfAccountKind = 'CONTA' | 'CARTEIRA' | 'POUPANCA' | 'INVESTIMENTO' | 'CARTAO';
-export type PfTxKind = 'GASTO' | 'ENTRADA' | 'TRANSFERENCIA';
+export type PfTxKind = 'GASTO' | 'ENTRADA' | 'TRANSFERENCIA' | 'AJUSTE';
 export type PfPlanKind = 'CONTA_FIXA' | 'ENTRADA_FIXA' | 'PARCELADO' | 'FINANCIAMENTO';
 export type PfAmortization = 'PRICE' | 'SAC' | 'FIXA';
 export type PfScheduleStatus = 'PREVISTO' | 'PAGO' | 'PULADO';
@@ -48,6 +48,15 @@ export interface PfAccount {
   opening_date: string;
   in_budget: boolean;
   active: boolean;
+  /** Só no cartão de crédito. */
+  credit_limit: number | null;
+}
+
+export interface PfAccountBalance {
+  account_id: number;
+  /** Saldo de hoje. No cartão, negativo = quanto está devendo. */
+  balance: number;
+  last_adjusted_at: string | null;
 }
 
 export interface PfCategory {
@@ -156,6 +165,8 @@ export interface PfCalendarDay {
   spent: number;
   income: number;
   paid_bills: number;
+  /** Ajustes de saldo do dia (com sinal), nas contas do cálculo. */
+  adjust: number;
   allowance: number | null;
   bills: Array<{ schedule_id: number; name: string; kind: PfPlanKind; amount: number; status: PfScheduleStatus }>;
 }
@@ -171,6 +182,8 @@ export interface PfSummary {
   spent: number;
   spent_daily: number;
   income: number;
+  /** Soma dos ajustes de saldo (com sinal); fora de gastos e entradas. */
+  adjustments: number;
   by_category: Array<{ category_id: number | null; name: string; total: number }>;
 }
 
@@ -226,6 +239,10 @@ export function usePfTransactions(range: { from: string; to: string } | { limit:
     },
     { enabled },
   );
+}
+
+export function usePfAccountBalances(enabled = true) {
+  return useAppQuery(['pf', 'balances'], () => rpc<PfAccountBalance[]>('pf_account_balances'), { enabled });
 }
 
 export function usePfPlans(enabled = true) {
@@ -308,6 +325,15 @@ export function useDeleteTransaction(onDone?: () => void) {
     mutationFn: (id) => rpc('pf_delete_transaction', { p_id: id }),
     success: 'Lançamento apagado.',
     onSuccess: () => onDone?.(),
+  });
+}
+
+/** Informa o saldo que cada conta tem agora (no cartão, o negativo do que se deve); só o que mudou vira ajuste. */
+export function useAdjustBalances(onDone?: (adjusted: number) => void) {
+  return useWrite<{ requestId: string; items: Array<{ account_id: number; target: number }> }, { adjusted: number }>({
+    mutationFn: (v) => rpc('pf_adjust_balances', { p_request_id: v.requestId, p_items: v.items }),
+    success: (r) => (r.adjusted === 0 ? 'Os saldos já estavam certos.' : 'Saldos atualizados.'),
+    onSuccess: (r) => onDone?.(r.adjusted),
   });
 }
 

@@ -27,6 +27,7 @@ import { useMember } from '@/features/member/member-context';
 import { describeError } from '@/lib/errors';
 import { formatDateBR } from '@/lib/dates';
 import { toNumber } from '@/lib/money';
+import { balanceToInput, inputToTarget } from './balance-math';
 import { PMoney } from './privacy';
 
 /** Ajustes: dia do salário, reserva, contas, categorias e a pessoa que divide as finanças. */
@@ -130,7 +131,9 @@ function AccountDialog({ account, onClose }: { account: PfAccount | null; onClos
   const { today: todayFn } = useMember();
   const [name, setName] = useState(account?.name ?? '');
   const [kind, setKind] = useState<PfAccountKind>(account?.kind ?? 'CONTA');
-  const [balance, setBalance] = useState<string | null>(account ? String(account.opening_balance) : '0');
+  // No cartão digita-se o que se DEVE (positivo); o saldo gravado é o negativo disso.
+  const [balance, setBalance] = useState<string | null>(account ? String(balanceToInput(account.kind, account.opening_balance)) : '0');
+  const [limit, setLimit] = useState<string | null>(account?.credit_limit != null ? String(account.credit_limit) : null);
   const [date, setDate] = useState(account?.opening_date ?? todayFn());
   const [inBudget, setInBudget] = useState(account?.in_budget ?? true);
   const [active, setActive] = useState(account?.active ?? true);
@@ -152,7 +155,16 @@ function AccountDialog({ account, onClose }: { account: PfAccount | null; onClos
                 setError(null);
                 if (!name.trim()) return setError('Informe o nome da conta.');
                 save.mutate(
-                  { id: account?.id, name: name.trim(), kind, opening_balance: toNumber(balance), opening_date: date, in_budget: inBudget, active },
+                  {
+                    id: account?.id,
+                    name: name.trim(),
+                    kind,
+                    opening_balance: inputToTarget(kind, toNumber(balance)),
+                    opening_date: date,
+                    in_budget: inBudget,
+                    active,
+                    credit_limit: kind === 'CARTAO' && limit !== null && limit !== '' ? toNumber(limit) : null,
+                  },
                   { onError: (e) => setError(describeError(e)) },
                 );
               }}
@@ -171,6 +183,8 @@ function AccountDialog({ account, onClose }: { account: PfAccount | null; onClos
               value={kind}
               onChange={(e) => {
                 const next = e.target.value as PfAccountKind;
+                // O cartão guarda o que se deve (positivo); trocar de/para cartão inverte o sinal do que foi digitado.
+                if ((kind === 'CARTAO') !== (next === 'CARTAO') && balance !== null && toNumber(balance) !== 0) setBalance(String(-toNumber(balance)));
                 setKind(next);
                 if (!account) setInBudget(next === 'CONTA' || next === 'CARTEIRA' || next === 'CARTAO');
               }}
@@ -183,13 +197,18 @@ function AccountDialog({ account, onClose }: { account: PfAccount | null; onClos
             </Select>
           </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label={kind === 'CARTAO' ? 'Quanto deve hoje' : 'Saldo'} hint={kind === 'CARTAO' ? 'Digite com sinal de menos, ex.: -400' : undefined}>
+            <Field label={kind === 'CARTAO' ? 'Quanto devo' : 'Saldo'} hint={kind === 'CARTAO' ? 'O que já gastou no cartão, em positivo.' : undefined}>
               <MoneyInput value={balance} onValueChange={setBalance} />
             </Field>
             <Field label="Saldo de qual dia">
               <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </Field>
           </div>
+          {kind === 'CARTAO' ? (
+            <Field label="Limite do cartão" hint="Com ele o app mostra quanto ainda resta. Depois, ajuste só o quanto devo na tela Hoje.">
+              <MoneyInput value={limit} onValueChange={setLimit} />
+            </Field>
+          ) : null}
           <label className="flex items-start gap-2 text-sm">
             <Checkbox className="mt-0.5" checked={inBudget} onChange={(e) => setInBudget(e.target.checked)} />
             <span>

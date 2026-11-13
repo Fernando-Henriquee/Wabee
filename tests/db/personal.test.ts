@@ -446,6 +446,81 @@ describe('contas e transferências', () => {
   });
 });
 
+describe('ajuste de saldo e cartões', () => {
+  interface Balance {
+    account_id: number;
+    balance: number;
+    last_adjusted_at: string | null;
+  }
+  const balances = (user: string) => env.as(user, (s) => s.rpc<Balance[]>('pf_account_balances', {}));
+  const balanceOf = async (user: string, account: number) => n((await balances(user)).find((b) => b.account_id === account)!.balance);
+  const adjust = (user: string, items: Array<{ account_id: number; target: number }>, requestId = rid()) =>
+    env.as(user, (s) => s.rpc<{ adjusted: number }>('pf_adjust_balances', { p_request_id: requestId, p_items: items }));
+
+  it('o ajuste leva a conta ao saldo informado, muda o valor de hoje e não vira gasto nem entrada', async () => {
+    const before = await budget(ana);
+    const current = await balanceOf(ana, conta);
+    const requestId = rid();
+    expect(await adjust(ana, [{ account_id: conta, target: current - 150 }], requestId)).toEqual({ adjusted: 1 });
+    expect(await balanceOf(ana, conta)).toBe(current - 150);
+    const after = await budget(ana);
+    // Vale desde o início do dia: o saldo e o limite de hoje já refletem, e o gasto de hoje não muda.
+    expect(n(after.balance)).toBe(n(before.balance) - 150);
+    expect(n(after.allowance)).toBeLessThan(n(before.allowance));
+    expect(n(after.spent)).toBe(n(before.spent));
+    const from = await day(-5);
+    const to = await day(0);
+    const summary = await env.as(ana, (s) => s.rpc<{ spent: number; income: number; adjustments: number }>('pf_summary', { p_from: from, p_to: to }));
+    expect(summary).toMatchObject({ spent: 0, income: 0 });
+    expect(n(summary.adjustments)).toBe(-150);
+    const tx = (await rows<{ kind: string; amount: number; description: string }>(ana, `select kind, amount, description from public.pf_transactions`))[0]!;
+    expect(tx).toMatchObject({ kind: 'AJUSTE', description: 'Ajuste de saldo' });
+    expect(n(tx.amount)).toBe(-150);
+    // Mesmo identificador não grava de novo; informar o mesmo saldo não cria ajuste.
+    expect(await adjust(ana, [{ account_id: conta, target: current - 150 }], requestId)).toEqual({ adjusted: 1 });
+    expect(await adjust(ana, [{ account_id: conta, target: current - 150 }])).toEqual({ adjusted: 0 });
+    expect((await rows(ana, `select 1 from public.pf_transactions`)).length).toBe(1);
+    expect((await balances(ana)).find((b) => b.account_id === conta)!.last_adjusted_at).not.toBeNull();
+    // Saldo a mais também vale; a soma das contas do cálculo bate com o saldo do dia seguinte.
+    await adjust(ana, [{ account_id: conta, target: current + 50 }]);
+    const inBudget = await rows<{ id: number }>(ana, `select id from public.pf_accounts where in_budget and active`);
+    const sum = (await Promise.all(inBudget.map((a) => balanceOf(ana, a.id)))).reduce((x, y) => x + y, 0);
+    expect(n((await budget(ana, await day(1))).balance)).toBeCloseTo(sum, 2);
+    await wipe('pf_transactions');
+  });
+
+  it('cartão: o limite restante cai com a dívida, que também reduz o que se pode gastar', async () => {
+    const card = await env.as(ana, (s) => s.rpc<number>('pf_save_account', { p_account: { name: 'Cartão Roxo', kind: 'CARTAO', opening_balance: 0, credit_limit: 2000 } }));
+    expect(n((await rows<{ credit_limit: number }>(ana, `select credit_limit from public.pf_accounts where id = $1`, [card]))[0]!.credit_limit)).toBe(2000);
+    const before = await budget(ana);
+    await adjust(ana, [{ account_id: card, target: -300 }]);
+    expect(await balanceOf(ana, card)).toBe(-300);
+    expect(n((await budget(ana)).balance)).toBe(n(before.balance) - 300);
+    // A dívida cresce de novo: só a diferença vira ajuste.
+    await adjust(ana, [{ account_id: card, target: -750 }]);
+    expect((await rows<{ amount: number }>(ana, `select amount from public.pf_transactions order by id`)).map((t) => n(t.amount))).toEqual([-300, -450]);
+    expect(await balanceOf(ana, card)).toBe(-750);
+    // Limite só vale no cartão; não pode ser negativo.
+    const other = await env.as(ana, (s) => s.rpc<number>('pf_save_account', { p_account: { name: 'Carteira', kind: 'CARTEIRA', credit_limit: 500 } }));
+    expect((await rows<{ credit_limit: number | null }>(ana, `select credit_limit from public.pf_accounts where id = $1`, [other]))[0]!.credit_limit).toBeNull();
+    await expect(env.as(ana, (s) => s.rpc('pf_save_account', { p_account: { id: card, name: 'Cartão Roxo', kind: 'CARTAO', credit_limit: -1 } }))).rejects.toThrow(/limite/);
+  });
+
+  it('ajuste não se edita, mas se apaga e o saldo volta; outra pessoa não ajusta contas alheias', async () => {
+    const [adj] = await rows<{ id: number }>(ana, `select id from public.pf_transactions order by id limit 1`);
+    await expect(env.as(ana, (s) => s.rpc('pf_update_transaction', { p_id: adj!.id, p_tx: { amount: 10 } }))).rejects.toThrow(/não se edita/);
+    const card = (await rows<{ id: number }>(ana, `select id from public.pf_accounts where name = 'Cartão Roxo'`))[0]!.id;
+    const owed = await balanceOf(ana, card);
+    await env.as(ana, (s) => s.rpc('pf_delete_transaction', { p_id: adj!.id }));
+    expect(await balanceOf(ana, card)).toBe(owed + 300);
+    await expect(adjust(ana, [])).rejects.toThrow(/Nada para ajustar/);
+    await expect(adjust(ana, [{ account_id: card, target: Number.NaN }])).rejects.toThrow();
+    await env.as(cris, (s) => s.rpc('pf_ensure_space', {}));
+    await expect(adjust(cris, [{ account_id: card, target: 0 }])).rejects.toThrow(/Conta não encontrada/);
+    await wipe('pf_transactions');
+  });
+});
+
 describe('calendário', () => {
   it('traz um item por dia com o gasto, o limite do dia e os vencimentos', async () => {
     await add(ana, { amount: 40, date: await day(-1), description: 'ontem' });

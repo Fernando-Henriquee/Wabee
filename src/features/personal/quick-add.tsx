@@ -29,7 +29,7 @@ import { useSpeech } from './use-speech';
 
 interface Draft {
   uid: string;
-  kind: PfTxKind;
+  kind: Exclude<PfTxKind, 'AJUSTE'>;
   amount: string | null;
   description: string;
   categoryId: number | null;
@@ -44,7 +44,9 @@ interface Draft {
   fromVoice: boolean;
 }
 
-const KIND_LABELS: Record<PfTxKind, string> = { GASTO: 'Gasto', ENTRADA: 'Entrada', TRANSFERENCIA: 'Transferência' };
+/** Ajuste de saldo não se lança aqui: tem tela própria ("Atualizar saldos"). */
+type QuickKind = Exclude<PfTxKind, 'AJUSTE'>;
+const KIND_LABELS: Record<QuickKind, string> = { GASTO: 'Gasto', ENTRADA: 'Entrada', TRANSFERENCIA: 'Transferência' };
 
 const blank = (today: string, accountId: number | null): Draft => ({
   uid: crypto.randomUUID(),
@@ -315,7 +317,7 @@ function DraftCard({
     <li className="space-y-3 rounded-xl border border-line bg-panel p-3">
       <div className="flex items-center justify-between gap-2">
         <div role="radiogroup" aria-label="Tipo do lançamento" className="inline-flex overflow-x-auto rounded-lg border border-line bg-subtle p-0.5">
-          {(Object.keys(KIND_LABELS) as PfTxKind[]).map((kind) => (
+          {(Object.keys(KIND_LABELS) as QuickKind[]).map((kind) => (
             <button
               key={kind}
               type="button"

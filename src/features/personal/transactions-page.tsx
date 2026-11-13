@@ -90,6 +90,11 @@ export function TransactionsPage() {
             <dd className="text-lg font-semibold"><PMoney value={summary.data?.spent_daily ?? 0} /></dd>
           </div>
         </dl>
+        {summary.data && summary.data.adjustments !== 0 ? (
+          <p className="border-t border-line px-4 py-2 text-center text-xs text-muted">
+            Ajustes de saldo no mês: <PMoney value={summary.data.adjustments} signed className="font-medium" /> (fora de gastos e entradas)
+          </p>
+        ) : null}
         {summary.data && summary.data.by_category.length > 0 ? (
           <ul className="flex flex-wrap gap-1.5 border-t border-line px-4 py-3" aria-label="Gastos por categoria">
             {summary.data.by_category.map((c) => (
@@ -143,12 +148,13 @@ export function TransactionsPage() {
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium">{t.description || t.category_name || (t.kind === 'TRANSFERENCIA' ? 'Transferência' : 'Sem descrição')}</span>
                         <span className="block text-xs text-muted">
-                          {t.kind === 'TRANSFERENCIA' ? `${t.account_name} → ${t.to_account_name}` : `${t.category_name ?? 'Sem categoria'} · ${t.account_name}`}
+                          {t.kind === 'TRANSFERENCIA' ? `${t.account_name} → ${t.to_account_name}` : t.kind === 'AJUSTE' ? t.account_name : `${t.category_name ?? 'Sem categoria'} · ${t.account_name}`}
+                          {t.kind === 'AJUSTE' ? <Badge className="ml-1.5">ajuste</Badge> : null}
                           {t.schedule_id ? <Badge className="ml-1.5">conta/parcela</Badge> : null}
                           {t.source === 'VOZ' ? <Badge tone="info" className="ml-1.5">voz</Badge> : null}
                         </span>
                       </span>
-                      <PMoney value={t.kind === 'GASTO' ? -t.amount : t.amount} signed={t.kind === 'ENTRADA'} className={cn('text-sm font-semibold', t.kind === 'ENTRADA' && 'text-success')} />
+                      <PMoney value={t.kind === 'GASTO' ? -t.amount : t.amount} signed={t.kind === 'ENTRADA' || t.kind === 'AJUSTE'} className={cn('text-sm font-semibold', t.kind === 'ENTRADA' && 'text-success')} />
                     </button>
                   </li>
                 ))}
@@ -157,8 +163,51 @@ export function TransactionsPage() {
           ))}
         </div>
       )}
-      {editing ? <EditTransactionDialog key={editing.id} tx={editing} onClose={() => setEditing(null)} /> : null}
+      {editing ? (
+        editing.kind === 'AJUSTE' ? (
+          <AdjustmentDialog key={editing.id} tx={editing} onClose={() => setEditing(null)} />
+        ) : (
+          <EditTransactionDialog key={editing.id} tx={editing} onClose={() => setEditing(null)} />
+        )
+      ) : null}
     </div>
+  );
+}
+
+/** Ajuste de saldo não se edita: só dá para apagar (ou fazer outro ajuste em "Atualizar saldos"). */
+function AdjustmentDialog({ tx, onClose }: { tx: PfTransaction; onClose: () => void }) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const remove = useDeleteTransaction(onClose);
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent
+        title="Ajuste de saldo"
+        description={`${formatDateBR(tx.date)} · ${tx.account_name}`}
+        footer={
+          <>
+            <Button variant="danger-outline" onClick={() => setConfirmDelete(true)} className="mr-auto">
+              <Trash2 /> Apagar
+            </Button>
+            <Button variant="outline" onClick={onClose}>
+              Fechar
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm">
+          Este ajuste {tx.amount > 0 ? 'somou' : 'tirou'} <PMoney value={Math.abs(tx.amount)} className="font-semibold" /> {tx.amount > 0 ? 'ao' : 'do'} saldo de {tx.account_name} para ele bater com o valor real que você informou.
+        </p>
+        <p className="mt-2 text-xs text-muted">Para corrigir, apague e informe o saldo de novo em "Atualizar saldos" na tela Hoje.</p>
+      </DialogContent>
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title="Apagar este ajuste?"
+        description="O saldo da conta volta ao valor anterior ao ajuste. Não dá para desfazer."
+        confirmLabel="Apagar"
+        onConfirm={() => remove.mutateAsync(tx.id).catch(() => undefined)}
+      />
+    </Dialog>
   );
 }
 

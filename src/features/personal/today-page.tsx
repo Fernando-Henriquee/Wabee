@@ -9,6 +9,7 @@ import { type PfBill, usePfAccounts, usePfBudget, usePfTransactions } from '@/da
 import { cn } from '@/lib/cn';
 import { diffInDays, formatDateBR } from '@/lib/dates';
 import { usePersonalActions } from './actions';
+import { BalancesCard } from './balances';
 import { PayDialog, type PayTarget } from './plan-dialogs';
 import { PMoney } from './privacy';
 
@@ -55,11 +56,11 @@ export function TodayPage() {
     <div className="space-y-5">
       {!hasData ? (
         <div className="rounded-xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm text-warning">
-          Para o cálculo fazer sentido, informe o saldo das suas contas em{' '}
+          Para o cálculo fazer sentido, toque em <strong>Atualizar saldos</strong> abaixo com o quanto você tem agora (e cadastre seus cartões em{' '}
           <Link to="/pessoal/ajustes" className="font-semibold underline underline-offset-2">
             Ajustes
-          </Link>{' '}
-          e cadastre seu salário e suas contas em{' '}
+          </Link>
+          ), e cadastre seu salário e suas contas em{' '}
           <Link to="/pessoal/parcelas" className="font-semibold underline underline-offset-2">
             Parcelas e contas
           </Link>
@@ -133,6 +134,8 @@ export function TodayPage() {
           )}
         </div>
       </Card>
+
+      <BalancesCard />
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Card>
@@ -212,12 +215,13 @@ export function TodayPage() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{t.description || t.category_name || (t.kind === 'TRANSFERENCIA' ? 'Transferência' : 'Sem descrição')}</p>
                   <p className="text-xs text-muted">
-                    {shortDate(t.date)} · {t.kind === 'TRANSFERENCIA' ? `${t.account_name} → ${t.to_account_name}` : (t.category_name ?? 'Sem categoria')}
+                    {shortDate(t.date)} · {t.kind === 'TRANSFERENCIA' ? `${t.account_name} → ${t.to_account_name}` : t.kind === 'AJUSTE' ? t.account_name : (t.category_name ?? 'Sem categoria')}
+                    {t.kind === 'AJUSTE' ? <Badge className="ml-1.5">ajuste</Badge> : null}
                     {t.schedule_id ? <Badge className="ml-1.5">conta/parcela</Badge> : null}
                     {t.source === 'VOZ' ? <Badge tone="info" className="ml-1.5">voz</Badge> : null}
                   </p>
                 </div>
-                <PMoney value={t.kind === 'ENTRADA' ? t.amount : t.kind === 'GASTO' ? -t.amount : t.amount} signed={t.kind === 'ENTRADA'} className={cn('text-sm font-semibold', t.kind === 'ENTRADA' && 'text-success')} />
+                <PMoney value={t.kind === 'GASTO' ? -t.amount : t.amount} signed={t.kind === 'ENTRADA' || t.kind === 'AJUSTE'} className={cn('text-sm font-semibold', t.kind === 'ENTRADA' && 'text-success')} />
               </li>
             ))}
           </ul>
