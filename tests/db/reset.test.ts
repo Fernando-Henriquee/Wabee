@@ -11,7 +11,7 @@ const rid = () => crypto.randomUUID();
 
 /** Tabelas que o reset mantém; todas as outras do schema public precisam ficar vazias. */
 const KEPT = [
-  'companies', 'company_members', 'company_invites', 'profiles', 'settings', 'sales_channels', 'sales_channel_fees', 'cost_rates', 'financial_categories',
+  'companies', 'company_members', 'company_invites', 'account_approvals', 'platform_admins', 'profiles', 'settings', 'sales_channels', 'sales_channel_fees', 'cost_rates', 'financial_categories',
   'equipment', 'suppliers', 'customers', 'payment_accounts',
   // Finanças pessoais: separadas da empresa e fora do reset.
   'pf_spaces', 'pf_space_members', 'pf_accounts', 'pf_categories', 'pf_plans', 'pf_schedule', 'pf_transactions', 'pf_word_rules',

@@ -17,7 +17,7 @@ App web instalável (PWA) em React + Vite, hospedado na Vercel, com banco, login
 | Financeiro | `/financeiro` | A pagar/receber, despesas, contas, caixa, DRE, dono e fechamento do mês |
 | Configurações | `/configuracoes`, `/auditoria` | Empresa e regras, canais e taxas, pessoas, aplicativo, auditoria |
 
-Multi-empresa: qualquer pessoa cria a própria conta e empresa (tela **Criar conta**); cada empresa é um espaço isolado e só entra em outra quem for convidado por alguém dela. Perfis: **dono** (tudo, e gerencia as pessoas) e **membro** (acesso a tudo da empresa).
+Multi-empresa: qualquer pessoa pede uma conta pela tela **Criar conta**, o administrador da plataforma aprova (menu da conta → Cadastros) e a pessoa cria a própria empresa; cada empresa é um espaço isolado e só entra em outra quem for convidado por alguém dela. Perfis: **dono** (tudo, e gerencia as pessoas) e **membro** (acesso a tudo da empresa).
 
 ## Como funciona por dentro
 

@@ -65,12 +65,27 @@ export class TestEnv {
     return buildSession(this.db);
   }
 
-  async createUser(email: string, displayName?: string): Promise<string> {
+  /**
+   * Cria uma conta no Auth. Por padrão já nasce APROVADA (a maioria dos testes não trata de aprovação);
+   * `pending: true` deixa como o cadastro pela tela "Criar conta": pendente até um administrador aprovar.
+   */
+  async createUser(email: string, displayName?: string, options: { pending?: boolean; companyName?: string } = {}): Promise<string> {
+    const meta: Record<string, string> = {};
+    if (displayName) meta.display_name = displayName;
+    if (options.companyName) meta.company_name = options.companyName;
     const row = await this.admin().one<{ id: string }>(
       `insert into auth.users (email, raw_user_meta_data) values ($1, $2) returning id`,
-      [email, JSON.stringify(displayName ? { display_name: displayName } : {})],
+      [email, JSON.stringify(meta)],
     );
+    if (!options.pending) {
+      await this.admin().query(`update public.account_approvals set status = 'aprovado', decided_at = now() where user_id = $1`, [row.id]);
+    }
     return row.id;
+  }
+
+  /** Torna a conta administradora da plataforma (quem aprova cadastros). */
+  async makePlatformAdmin(userId: string): Promise<void> {
+    await this.admin().query(`insert into public.platform_admins (user_id) values ($1) on conflict do nothing`, [userId]);
   }
 
   /** Empresa criada pela migration (recebe os dados iniciais): a "empresa padrão" dos testes. */

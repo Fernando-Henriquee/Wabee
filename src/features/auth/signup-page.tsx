@@ -55,6 +55,7 @@ export function SignUpPage() {
     }
     // Com a confirmação de e-mail ligada não há sessão agora; o app abre depois do link do e-mail.
     // Mesma resposta para e-mails novos ou já cadastrados (não revela quais contas existem).
+    // (Sem confirmação de e-mail a sessão já vem: o app abre na tela de "aguardando aprovação".)
     if (!data.session) setSentTo(values.email);
   });
 
@@ -84,7 +85,7 @@ export function SignUpPage() {
   }
 
   return (
-    <AuthLayout title="Criar conta" subtitle="Você cria a sua empresa e só vê o que for dela." footer={footer}>
+    <AuthLayout title="Criar conta" subtitle="O cadastro passa por aprovação. Depois, você cria a sua empresa e só vê o que for dela." footer={footer}>
       <form onSubmit={onSubmit} className="space-y-4" noValidate>
         <Field label="Seu nome" error={form.formState.errors.name?.message}>
           <Input autoComplete="name" autoFocus {...form.register('name')} />

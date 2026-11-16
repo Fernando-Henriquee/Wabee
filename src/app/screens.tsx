@@ -1,4 +1,4 @@
-import { LogOut, RefreshCw, ShieldAlert, WifiOff } from 'lucide-react';
+import { Hourglass, LogOut, RefreshCw, ShieldAlert, WifiOff } from 'lucide-react';
 import { Link } from 'react-router';
 import { BrandMark, BrandName } from '@/components/layout/brand';
 import { Page, PageHeader } from '@/components/layout/page';
@@ -91,6 +91,47 @@ export function MembershipErrorScreen({ error, onRetry }: { error: unknown; onRe
           <LogOut /> Sair
         </Button>
       </div>
+    </div>
+  );
+}
+
+/** Conta criada, mas ainda sem a aprovação do administrador: não faz nada até lá. */
+export function PendingApprovalScreen({ onCheck, checking }: { onCheck: () => void; checking: boolean }) {
+  const { user, signOut } = useAuth();
+  return (
+    <div className="mx-auto max-w-lg px-4 py-16 text-center">
+      <BrandMark className="mx-auto size-14 rounded-2xl" />
+      <Hourglass className="mx-auto mt-6 size-8 text-warning" aria-hidden />
+      <h1 className="mt-3 text-2xl">Cadastro aguardando aprovação</h1>
+      <p className="mt-2 text-sm text-ink-soft">
+        A conta <strong>{user?.email}</strong> foi criada e está na fila de aprovação. Assim que for aprovada, esta tela libera sozinha e você
+        cria a sua empresa.
+      </p>
+      <div className="mt-6 flex flex-wrap justify-center gap-2">
+        <Button variant="outline" loading={checking} onClick={onCheck}>
+          <RefreshCw /> Verificar agora
+        </Button>
+        <Button variant="ghost" onClick={() => void signOut('local')}>
+          <LogOut /> Sair
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export function DeclinedAccountScreen() {
+  const { user, signOut } = useAuth();
+  return (
+    <div className="mx-auto max-w-lg px-4 py-16 text-center">
+      <BrandMark className="mx-auto size-14 rounded-2xl" />
+      <ShieldAlert className="mx-auto mt-6 size-8 text-danger" aria-hidden />
+      <h1 className="mt-3 text-2xl">Cadastro não aprovado</h1>
+      <p className="mt-2 text-sm text-ink-soft">
+        A conta <strong>{user?.email}</strong> não foi aprovada para usar o Wabee. Se isso for um engano, fale com quem administra a plataforma.
+      </p>
+      <Button className="mt-6" variant="outline" onClick={() => void signOut('local')}>
+        <LogOut /> Sair
+      </Button>
     </div>
   );
 }

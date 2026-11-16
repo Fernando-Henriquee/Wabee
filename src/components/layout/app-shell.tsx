@@ -1,7 +1,8 @@
-import { Building2, Check, LogOut, Menu as MenuIcon, Plus, UserRound } from 'lucide-react';
+import { Building2, Check, LogOut, Menu as MenuIcon, Plus, ShieldCheck, UserRound } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { useAccountsOverview, useIsPlatformAdmin } from '@/data/accounts';
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
 import { useAuth } from '@/features/auth/auth-context';
 import { CompanyDialog, useCompanies } from '@/features/member/company-gate';
@@ -51,6 +52,8 @@ function UserMenu({ compact = false }: { compact?: boolean }) {
   const { role, company } = useMember();
   const { companies, invites, switchCompany } = useCompanies();
   const [companyDialog, setCompanyDialog] = useState(false);
+  const isPlatformAdmin = useIsPlatformAdmin().data === true;
+  const waiting = useAccountsOverview(isPlatformAdmin).data?.pendentes.length ?? 0;
   const name = (user?.user_metadata?.display_name as string | undefined) ?? user?.email ?? '';
   return (
     <>
@@ -63,7 +66,7 @@ function UserMenu({ compact = false }: { compact?: boolean }) {
           >
             <span className="relative grid size-8 shrink-0 place-items-center rounded-full bg-accent text-sm font-bold text-ink">
               {name.slice(0, 1).toUpperCase() || <UserRound className="size-4" />}
-              {invites.length > 0 ? <span className="absolute -right-0.5 -top-0.5 size-2.5 rounded-full bg-danger ring-2 ring-panel" aria-label="Convites pendentes" /> : null}
+              {invites.length + waiting > 0 ? <span className="absolute -right-0.5 -top-0.5 size-2.5 rounded-full bg-danger ring-2 ring-panel" aria-label="Há pendências" /> : null}
             </span>
             {compact ? null : (
               <span className="min-w-0">
@@ -91,6 +94,13 @@ function UserMenu({ compact = false }: { compact?: boolean }) {
           <MenuItem onSelect={() => setCompanyDialog(true)}>
             <Plus /> {invites.length > 0 ? `Convites (${invites.length}) e nova empresa` : 'Nova empresa'}
           </MenuItem>
+          {isPlatformAdmin ? (
+            <MenuItem asChild>
+              <Link to="/admin/cadastros">
+                <ShieldCheck /> Cadastros{waiting > 0 ? ` (${waiting} aguardando)` : ''}
+              </Link>
+            </MenuItem>
+          ) : null}
           <MenuSeparator />
           <MenuItem asChild>
             <Link to="/perfil">

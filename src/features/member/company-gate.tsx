@@ -7,7 +7,8 @@ import { Card, CardHeader } from '@/components/ui/card';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { MembershipErrorScreen, OfflineWithoutDataScreen, Splash } from '@/app/screens';
+import { DeclinedAccountScreen, MembershipErrorScreen, OfflineWithoutDataScreen, PendingApprovalScreen, Splash } from '@/app/screens';
+import { useMyAccountStatus } from '@/data/accounts';
 import { rpc } from '@/data/api';
 import {
   type CompanySummary,
@@ -49,6 +50,8 @@ export function useCompanies(): CompanyState {
 export function CompanyGate({ userId, children }: { userId: string; children: (active: CompanySummary) => ReactNode }) {
   const queryClient = useQueryClient();
   const online = useOnline();
+  const status = useMyAccountStatus(userId);
+  const approved = status.data === 'aprovado';
   const companies = useMyCompanies(userId);
   const invites = usePendingInvites(userId);
   const [selected, setSelected] = useState<string | null>(() => readRememberedCompanyId());
@@ -82,7 +85,7 @@ export function CompanyGate({ userId, children }: { userId: string; children: (a
   }, []);
 
   useEffect(() => {
-    if (!companies.isSuccess || list.length > 0 || !pendingName || autoStarted.current) return;
+    if (!approved || !companies.isSuccess || list.length > 0 || !pendingName || autoStarted.current) return;
     autoStarted.current = true; // uma tentativa só: nunca cria empresa em duplicidade
     setAutoCreate('creating');
     void (async () => {
@@ -98,14 +101,18 @@ export function CompanyGate({ userId, children }: { userId: string; children: (a
         setAutoCreate('failed');
       }
     })();
-  }, [companies.isSuccess, list.length, pendingName, switchCompany, refresh]);
+  }, [approved, companies.isSuccess, list.length, pendingName, switchCompany, refresh]);
 
   const value = useMemo<CompanyState | null>(
     () => (active ? { companies: list, active, invites: invites.data ?? [], switchCompany, refresh } : null),
     [list, active, invites.data, switchCompany, refresh],
   );
 
-  if (companies.isPending) return online ? <Splash /> : <OfflineWithoutDataScreen />;
+  if (status.isPending || companies.isPending) return online ? <Splash /> : <OfflineWithoutDataScreen />;
+  if (status.isError && !status.data) return <MembershipErrorScreen error={status.error} onRetry={() => void status.refetch()} />;
+  // Conta nova só entra no sistema depois da aprovação do administrador da plataforma.
+  if (status.data === 'pendente') return <PendingApprovalScreen onCheck={() => void status.refetch()} checking={status.isFetching} />;
+  if (status.data === 'recusado') return <DeclinedAccountScreen />;
   if (companies.isError && !companies.data) return <MembershipErrorScreen error={companies.error} onRetry={() => void companies.refetch()} />;
   if (!active || !value) {
     // A empresa do cadastro está sendo criada (ou acabou de ser): não pisca a tela de "vamos começar".

@@ -32,16 +32,24 @@ O script registra o que aplicou em `supabase_migrations.schema_migrations`, a me
 
 Em **Authentication → Sign In / Providers → Email**:
 - ligue **Allow new users to sign up**: é o que libera a tela **Criar conta** do app;
-- mantenha **Confirm email** LIGADO. É obrigatório: os convites são entregues pelo e-mail da conta, e só e-mail confirmado recebe convite. Sem a confirmação, quem cadastrasse o e-mail de outra pessoa poderia entrar na empresa dela;
-- recomendado: em **Authentication → Attack Protection**, ative o CAPTCHA (Turnstile ou hCaptcha) para barrar cadastros automáticos, e mantenha os limites de e-mail padrão.
+- **Confirm email**: com a aprovação manual (abaixo) pode ficar DESLIGADO, e o cadastro não depende de e-mail. Se preferir confirmar por e-mail, mantenha ligado, mas aí é obrigatório configurar um SMTP próprio (o serviço embutido do Supabase só entrega para membros da sua organização e tem limite de uns 2 e-mails por hora);
+- recomendado: em **Authentication → Attack Protection**, ative o CAPTCHA (Turnstile ou hCaptcha) para barrar cadastros automáticos.
 
 Em **Authentication → URL Configuration**:
 - **Site URL**: o endereço do app na Vercel;
-- **Redirect URLs**: `https://<seu-dominio>/entrar` (link de confirmação do cadastro) e `https://<seu-dominio>/redefinir-senha` (e o domínio próprio, se houver).
+- **Redirect URLs**: `https://<seu-dominio>/entrar` e `https://<seu-dominio>/redefinir-senha` (e o domínio próprio, se houver).
 
-### Criar conta
+Recuperar senha e o e-mail de convite para quem ainda não tem conta continuam precisando de e-mail funcionando (SMTP próprio).
 
-Na tela de entrada, **Criar conta** pede nome, nome da empresa, e-mail e senha. A pessoa recebe um e-mail, confirma, entra, e o app cria a empresa dela automaticamente (ela vira dona). Uma conta nova não vê nada de nenhuma outra empresa: só entra em outra se alguém da empresa a convidar e ela aceitar. E-mail já cadastrado recebe a mesma resposta que um novo, para não revelar quais contas existem.
+### Criar conta e aprovação
+
+Na tela de entrada, **Criar conta** pede nome, nome da empresa, e-mail e senha. A conta nasce **pendente**: a pessoa vê "Cadastro aguardando aprovação" e não consegue fazer nada (não cria empresa, não aceita convite, não usa finanças pessoais) até um administrador da plataforma aprovar.
+
+- **Quem aprova:** quem está em `platform_admins` (hoje, a conta `storewabee@gmail.com`). No app, menu da conta → **Cadastros**, que mostra os pedidos (nome, e-mail, empresa pedida, data) com **Aprovar** e **Recusar**; dá para bloquear quem foi aprovado e vice-versa. Para incluir outro administrador: `insert into public.platform_admins (user_id) select id from auth.users where email = '...';`.
+- **Depois de aprovada:** a tela de espera libera sozinha (confere a cada 15 s), e o app cria a empresa com o nome informado no cadastro (a pessoa vira dona). Uma conta nova nunca vê nada de outra empresa: só entra em outra se alguém da empresa a convidar e ela aceitar.
+- **Contas já existentes** ficaram aprovadas. Contas criadas por **convite do Supabase** (`invited_at` preenchido) já nascem aprovadas.
+- **Atenção:** com "Confirm email" desligado o e-mail do cadastro não é verificado. Quem aprova garante que a pessoa é quem diz ser; aprove só quem você reconhece. Convites de empresa são entregues pelo e-mail da conta, por isso só contas aprovadas os recebem.
+- **E-mail já cadastrado:** com a confirmação desligada, o Supabase informa que o e-mail já tem conta (não dá para esconder isso nesse modo).
 
 ## Empresas, pessoas e convites
 

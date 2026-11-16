@@ -23,6 +23,9 @@ export async function seedLocal(db: LocalDatabase, auth: LocalAuth, options: { d
   }
   await db.admin(async (pg) => {
     await pg.exec(`create table if not exists local_meta.seed (key text primary key, value text not null)`);
+    // Contas de teste já nascem aprovadas; a do dono também é administradora da plataforma (página "Cadastros").
+    await pg.query(`update public.account_approvals set status = 'aprovado', decided_at = coalesce(decided_at, now()) where user_id = any($1::uuid[])`, [Object.values(ids)]);
+    await pg.query(`insert into public.platform_admins (user_id) values ($1) on conflict do nothing`, [ids['dono@local.test']]);
     const main = (await pg.query<{ id: string }>(`select id from public.companies order by created_at limit 1`)).rows[0]!.id;
     for (const account of LOCAL_ACCOUNTS) {
       if ('company' in account) continue;

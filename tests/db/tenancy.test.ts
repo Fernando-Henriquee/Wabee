@@ -41,7 +41,7 @@ afterAll(async () => {
 
 describe('proteções estruturais', () => {
   it('toda tabela do public tem company_id, RLS forçada e políticas (exceto as listadas)', async () => {
-    const livres = ['companies', 'company_members', 'company_invites', 'profiles'];
+    const livres = ['companies', 'company_members', 'company_invites', 'profiles', 'account_approvals', 'platform_admins'];
     const rows = await env.admin().query<{ relname: string; has_company: boolean; rls: boolean; forced: boolean; policies: number }>(`
       select c.relname,
              exists (select 1 from pg_attribute a where a.attrelid = c.oid and a.attname = 'company_id' and not a.attisdropped) as has_company,

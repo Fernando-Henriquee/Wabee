@@ -54,6 +54,7 @@ export function describeError(error: unknown): string {
   if (/at least \d+ characters|weak_password|Password should/i.test(message)) return 'Senha fraca: use pelo menos 8 caracteres, misturando letras e números.';
   if (/should be different from the old password/i.test(message)) return 'A nova senha precisa ser diferente da atual.';
   if (/refresh token|session.*(missing|expired|not found)|JWT expired/i.test(message)) return 'Sua sessão expirou. Entre novamente.';
+  if (/User already registered|already been registered|user_already_exists/i.test(message)) return 'Já existe uma conta com este e-mail. Entre, ou use "Esqueci minha senha".';
   if (/Signups not allowed/i.test(message)) return 'A criação de contas não está liberada no momento. Peça um convite ao dono da empresa.';
 
   switch (e.code) {

@@ -1,4 +1,5 @@
-import { Route, Routes } from 'react-router';
+import { Navigate, Route, Routes } from 'react-router';
+import { adminRoutes } from '@/features/admin/routes';
 import { dashboardRoutes } from '@/features/dashboard/routes';
 import { financeRoutes } from '@/features/finance/routes';
 import { inventoryRoutes } from '@/features/inventory/routes';
@@ -27,6 +28,7 @@ export function AppRoutes() {
       {purchasingRoutes()}
       {financeRoutes()}
       {settingsRoutes()}
+      {adminRoutes()}
       {personalRoutes()}
       <Route path="/entrar" element={<NotFoundRedirect />} />
       <Route path="/criar-conta" element={<NotFoundRedirect />} />
@@ -36,7 +38,6 @@ export function AppRoutes() {
 }
 
 function NotFoundRedirect() {
-  // Depois do login, /entrar volta para a visão geral.
-  window.history.replaceState(null, '', '/');
-  return null;
+  // Depois do login (ou do cadastro), /entrar e /criar-conta levam à visão geral.
+  return <Navigate to="/" replace />;
 }
