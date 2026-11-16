@@ -68,7 +68,7 @@ describe('proteções estruturais', () => {
       select p.proname as obj from pg_proc p
       where p.pronamespace in ('public'::regnamespace, 'private'::regnamespace) and p.prokind = 'f'
         and pg_get_userbyid(p.proowner) <> 'wabee_owner'
-        and p.proname not in ('apply_grants', 'apply_ownership', 'auth_email', 'auth_user_id')`);
+        and p.proname not in ('apply_grants', 'apply_ownership', 'auth_email', 'auth_user_id', 'auth_confirm_email')`);
     expect(funcoes).toEqual([]);
   });
 
@@ -83,9 +83,9 @@ describe('proteções estruturais', () => {
     }
     const helpers = await env.admin().query<{ proname: string; dono: string; exec: boolean }>(
       `select proname, pg_get_userbyid(proowner) as dono, has_function_privilege('authenticated', oid, 'EXECUTE') as exec
-         from pg_proc where pronamespace = 'private'::regnamespace and proname in ('auth_email', 'auth_user_id') order by 1`,
+         from pg_proc where pronamespace = 'private'::regnamespace and proname in ('auth_email', 'auth_user_id', 'auth_confirm_email') order by 1`,
     );
-    expect(helpers.map((h) => [h.proname, h.dono !== 'wabee_owner', h.exec])).toEqual([['auth_email', true, false], ['auth_user_id', true, false]]);
+    expect(helpers.map((h) => [h.proname, h.dono !== 'wabee_owner', h.exec])).toEqual([['auth_confirm_email', true, false], ['auth_email', true, false], ['auth_user_id', true, false]]);
   });
 
   it('app_members (compatibilidade com o app antigo) mostra só o vínculo da própria pessoa', async () => {

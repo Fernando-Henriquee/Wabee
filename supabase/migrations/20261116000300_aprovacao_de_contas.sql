@@ -5,7 +5,7 @@
 -- PENDENTE até um administrador da plataforma aprovar (página "Cadastros" no app). Conta pendente
 -- não cria empresa, não aceita convite e não usa finanças pessoais: não consegue fazer nada.
 --
---   * Contas que já existem ficam APROVADAS.
+--   * Contas que já existem com e-mail confirmado ficam APROVADAS; as sem confirmação entram na fila.
 --   * Contas criadas por convite do Supabase (invited_at preenchido pelo servidor, a partir de um
 --     convite de dono de empresa) já nascem aprovadas.
 --   * O administrador inicial é a conta storewabee@gmail.com; outros entram em platform_admins.
@@ -38,9 +38,14 @@ alter table public.platform_admins enable row level security;
 create policy account_approvals_select on public.account_approvals for select to authenticated
   using (user_id = (select auth.uid()));
 
--- Contas que já existem ficam aprovadas.
-insert into public.account_approvals (user_id, status, display_name, decided_at)
-select u.id, 'aprovado', left(coalesce(nullif(btrim(u.raw_user_meta_data ->> 'display_name'), ''), split_part(coalesce(u.email, ''), '@', 1)), 80), now()
+-- Contas que já existem e têm e-mail confirmado ficam aprovadas. Quem criou conta e nunca confirmou o
+-- e-mail entra na fila (pendente) para o administrador decidir.
+insert into public.account_approvals (user_id, status, display_name, requested_company, decided_at)
+select u.id,
+       case when u.email_confirmed_at is not null then 'aprovado' else 'pendente' end,
+       left(coalesce(nullif(btrim(u.raw_user_meta_data ->> 'display_name'), ''), split_part(coalesce(u.email, ''), '@', 1)), 80),
+       nullif(left(btrim(coalesce(u.raw_user_meta_data ->> 'company_name', '')), 120), ''),
+       case when u.email_confirmed_at is not null then now() end
 from auth.users u
 on conflict (user_id) do nothing;
 
@@ -98,6 +103,69 @@ begin
   end if;
 end;
 $$;
+
+-- Escrita em auth.users: só por esta função, que fica com o postgres (o wabee_owner não escreve lá).
+create or replace function private.apply_ownership()
+returns void
+language plpgsql
+set search_path = ''
+as $$
+declare
+  r record;
+begin
+  -- Tabelas, views e views materializadas (as sequências de identidade acompanham a tabela).
+  for r in
+    select c.oid::regclass::text as obj, c.relkind
+    from pg_class c
+    where c.relnamespace = 'public'::regnamespace and c.relkind in ('r', 'p', 'v', 'm')
+      and pg_get_userbyid(c.relowner) <> 'wabee_owner'
+  loop
+    execute format('alter %s %s owner to wabee_owner',
+                   case r.relkind when 'v' then 'view' when 'm' then 'materialized view' else 'table' end, r.obj);
+  end loop;
+
+  -- Funções e procedimentos (menos as que o migrador executa).
+  for r in
+    select p.oid::regprocedure::text as obj
+    from pg_proc p
+    where p.pronamespace in ('public'::regnamespace, 'private'::regnamespace) and p.prokind in ('f', 'p')
+      and pg_get_userbyid(p.proowner) <> 'wabee_owner'
+      and p.proname not in ('apply_grants', 'apply_ownership', 'auth_email', 'auth_user_id', 'auth_confirm_email')
+      and not exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')
+  loop
+    execute format('alter function %s owner to wabee_owner', r.obj);
+  end loop;
+
+  -- RLS forçada e políticas em toda tabela com company_id (exceto as de gestão de empresas).
+  for r in
+    select c.relname
+    from pg_class c
+    join pg_attribute a on a.attrelid = c.oid and a.attname = 'company_id' and not a.attisdropped
+    where c.relnamespace = 'public'::regnamespace and c.relkind = 'r'
+      and c.relname not in ('company_members', 'company_invites')
+  loop
+    execute format('alter table public.%I enable row level security', r.relname);
+    execute format('alter table public.%I force row level security', r.relname);
+    execute format('drop policy if exists tenant_select on public.%I', r.relname);
+    execute format('drop policy if exists tenant_write on public.%I', r.relname);
+    execute format('create policy tenant_select on public.%I for select to authenticated using (company_id = (select private.company_id()))', r.relname);
+    execute format('create policy tenant_write on public.%I for all to wabee_owner using (company_id = (select private.company_id())) with check (private.is_company_member(company_id))', r.relname);
+  end loop;
+end;
+$$;
+
+create function private.auth_confirm_email(p_user uuid)
+returns void
+language sql
+volatile
+security definer
+set search_path = ''
+as $$
+  update auth.users set email_confirmed_at = coalesce(email_confirmed_at, now()) where id = p_user;
+$$;
+
+revoke all on function private.auth_confirm_email(uuid) from public, anon, authenticated;
+grant execute on function private.auth_confirm_email(uuid) to wabee_owner;
 
 create function public.my_account_status()
 returns text
@@ -158,6 +226,10 @@ begin
    where user_id = p_user_id;
   if not found then
     raise exception 'Cadastro não encontrado.' using errcode = '22023';
+  end if;
+  -- Aprovar vale como confirmar o e-mail: a pessoa consegue entrar mesmo sem ter clicado em link nenhum.
+  if p_approve then
+    perform private.auth_confirm_email(p_user_id);
   end if;
 end;
 $$;

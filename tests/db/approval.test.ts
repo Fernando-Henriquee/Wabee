@@ -79,6 +79,19 @@ describe('aprovação de contas', () => {
     expect(depois.decididas.find((d) => d.user_id === nova)?.status).toBe('aprovado');
   });
 
+  it('aprovar também confirma o e-mail (a aprovação substitui o link por e-mail)', async () => {
+    const nova = await env.createUser('semlink@x.test', 'Sem Link', { pending: true });
+    await env.admin().query(`update auth.users set email_confirmed_at = null where id = $1`, [nova]);
+    expect((await env.admin().one<{ c: string | null }>(`select email_confirmed_at as c from auth.users where id = $1`, [nova])).c).toBeNull();
+    await env.as(admin, (s) => s.rpc('admin_decide_account', { p_user_id: nova, p_approve: true }));
+    expect((await env.admin().one<{ c: string | null }>(`select email_confirmed_at as c from auth.users where id = $1`, [nova])).c).not.toBeNull();
+    // Recusar não confirma nada.
+    const outra = await env.createUser('recusada2@x.test', 'Outra', { pending: true });
+    await env.admin().query(`update auth.users set email_confirmed_at = null where id = $1`, [outra]);
+    await env.as(admin, (s) => s.rpc('admin_decide_account', { p_user_id: outra, p_approve: false }));
+    expect((await env.admin().one<{ c: string | null }>(`select email_confirmed_at as c from auth.users where id = $1`, [outra])).c).toBeNull();
+  });
+
   it('recusar bloqueia a conta; dá para voltar atrás; administrador não é recusado', async () => {
     const nova = await env.createUser('recusar@x.test', 'Recusada', { pending: true });
     await env.as(admin, (s) => s.rpc('admin_decide_account', { p_user_id: nova, p_approve: false }));
