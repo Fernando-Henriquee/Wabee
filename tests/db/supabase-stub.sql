@@ -23,6 +23,10 @@ create table auth.users (
   created_at timestamptz not null default now()
 );
 
+-- No Supabase real auth.users tem RLS ligada e sem políticas: papéis que não ignoram RLS (como o
+-- wabee_owner) não enxergam nenhuma linha; o postgres (BYPASSRLS) e o superusuário enxergam.
+alter table auth.users enable row level security;
+
 -- Mesma lógica do Supabase: settings vazios ('') valem como ausentes.
 create function auth.uid() returns uuid
 language sql stable as $$

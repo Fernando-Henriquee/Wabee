@@ -67,8 +67,25 @@ describe('proteções estruturais', () => {
     const funcoes = await env.admin().query<{ obj: string }>(`
       select p.proname as obj from pg_proc p
       where p.pronamespace in ('public'::regnamespace, 'private'::regnamespace) and p.prokind = 'f'
-        and pg_get_userbyid(p.proowner) <> 'wabee_owner' and p.proname not in ('apply_grants', 'apply_ownership')`);
+        and pg_get_userbyid(p.proowner) <> 'wabee_owner'
+        and p.proname not in ('apply_grants', 'apply_ownership', 'auth_email', 'auth_user_id')`);
     expect(funcoes).toEqual([]);
+  });
+
+  it('auth.users só é lido por funções do postgres: wabee_owner não vê nenhuma conta', async () => {
+    const dono = await env.admin().one<{ n: number }>(`select count(*)::int n from auth.users`);
+    expect(dono.n).toBeGreaterThan(0);
+    await env.db.exec('set role wabee_owner');
+    try {
+      expect((await env.db.query<{ n: number }>(`select count(*)::int n from auth.users`)).rows[0]!.n).toBe(0);
+    } finally {
+      await env.db.exec('reset role');
+    }
+    const helpers = await env.admin().query<{ proname: string; dono: string; exec: boolean }>(
+      `select proname, pg_get_userbyid(proowner) as dono, has_function_privilege('authenticated', oid, 'EXECUTE') as exec
+         from pg_proc where pronamespace = 'private'::regnamespace and proname in ('auth_email', 'auth_user_id') order by 1`,
+    );
+    expect(helpers.map((h) => [h.proname, h.dono !== 'wabee_owner', h.exec])).toEqual([['auth_email', true, false], ['auth_user_id', true, false]]);
   });
 
   it('anon não acessa nada de empresa', async () => {
