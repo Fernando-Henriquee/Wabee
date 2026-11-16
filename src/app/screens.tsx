@@ -1,10 +1,11 @@
-import { LogOut, ShieldAlert, WifiOff } from 'lucide-react';
+import { LogOut, RefreshCw, ShieldAlert, WifiOff } from 'lucide-react';
 import { Link } from 'react-router';
 import { BrandMark, BrandName } from '@/components/layout/brand';
 import { Page, PageHeader } from '@/components/layout/page';
 import { Button } from '@/components/ui/button';
 import { ErrorState, Skeleton } from '@/components/ui/states';
 import { useAuth } from '@/features/auth/auth-context';
+import { resetAppAndReload } from '@/lib/pwa-reset';
 
 export function Splash() {
   return (
@@ -81,9 +82,15 @@ export function MembershipErrorScreen({ error, onRetry }: { error: unknown; onRe
     <div className="mx-auto max-w-lg space-y-4 px-4 py-16">
       <h1 className="text-2xl">Não foi possível carregar seus dados</h1>
       <ErrorState error={error} onRetry={onRetry} />
-      <Button variant="ghost" onClick={() => void signOut('local')}>
-        <LogOut /> Sair
-      </Button>
+      <p className="text-sm text-muted">Se o erro continuar, o aparelho pode estar com uma versão antiga do app. Atualize e tente de novo.</p>
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" onClick={() => void resetAppAndReload()}>
+          <RefreshCw /> Atualizar o app
+        </Button>
+        <Button variant="ghost" onClick={() => void signOut('local')}>
+          <LogOut /> Sair
+        </Button>
+      </div>
     </div>
   );
 }

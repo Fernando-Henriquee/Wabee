@@ -88,6 +88,14 @@ describe('proteções estruturais', () => {
     expect(helpers.map((h) => [h.proname, h.dono !== 'wabee_owner', h.exec])).toEqual([['auth_email', true, false], ['auth_user_id', true, false]]);
   });
 
+  it('app_members (compatibilidade com o app antigo) mostra só o vínculo da própria pessoa', async () => {
+    const meu = await env.as(ana, (s) => s.query<{ user_id: string; role: string }>(`select user_id, role from public.app_members`));
+    expect(meu).toEqual([{ user_id: ana, role: 'dono' }]);
+    expect((await env.as(bia, (s) => s.query<{ role: string }>(`select role from public.app_members`))).map((r) => r.role)).toEqual(['leitura']);
+    expect(await env.as(carla, (s) => s.query(`select * from public.app_members`))).toEqual([]);
+    await expect(env.anon((s) => s.query(`select * from public.app_members`))).rejects.toThrow(/permission denied/);
+  });
+
   it('anon não acessa nada de empresa', async () => {
     await expect(env.anon((s) => s.query(`select * from public.items`))).rejects.toThrow(/permission denied/);
     await expect(env.anon((s) => s.rpc('my_companies', {}))).rejects.toThrow(/permission denied/);
