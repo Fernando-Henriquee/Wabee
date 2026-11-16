@@ -101,9 +101,10 @@ describe('espaço e privacidade', () => {
   });
 
   it('o convite só vale para conta existente que não está em outro espaço, e o espaço comporta duas pessoas', async () => {
-    await expect(env.as(ana, (s) => s.rpc('pf_add_member', { p_email: 'ninguem@wabee.test' }))).rejects.toThrow(/precisa já ter uma conta/);
+    await expect(env.as(ana, (s) => s.rpc('pf_add_member', { p_email: 'ninguem@wabee.test' }))).rejects.toThrow(/Não foi possível adicionar essa pessoa/);
     await env.as(cris, (s) => s.rpc('pf_ensure_space', {}));
-    await expect(env.as(ana, (s) => s.rpc('pf_add_member', { p_email: 'cris@wabee.test' }))).rejects.toThrow(/já usa um espaço/);
+    // Quem já usa outro espaço recebe a mesma resposta de quem não existe (não revela quais e-mails têm conta).
+    await expect(env.as(ana, (s) => s.rpc('pf_add_member', { p_email: 'cris@wabee.test' }))).rejects.toThrow(/Não foi possível adicionar essa pessoa/);
     await env.as(ana, (s) => s.rpc('pf_add_member', { p_email: 'bia@wabee.test' }));
     const seen = await rows<{ description: string }>(bia, `select description from public.v_pf_transactions`);
     expect(seen.map((t) => t.description)).toContain('segredo da Ana');

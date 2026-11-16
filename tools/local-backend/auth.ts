@@ -102,6 +102,30 @@ export class LocalAuth {
     });
   }
 
+  /**
+   * Cadastro pela tela "Criar conta". No Supabase real o e-mail precisa ser confirmado antes do primeiro
+   * acesso; aqui o cadastro já é confirmado e devolve a sessão. E-mail já cadastrado devolve um usuário
+   * vazio (sem sessão), como o GoTrue, para não revelar quais contas existem.
+   */
+  async signUp(email: string, password: string, metadata: Record<string, unknown>) {
+    const normalized = (email ?? '').trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalized)) throw new AuthError(422, 'validation_failed', 'Unable to validate email address: invalid format');
+    if ((password ?? '').length < 8) throw new AuthError(422, 'weak_password', 'Password should be at least 8 characters.');
+    if (await this.findUser('email', normalized)) {
+      const now = new Date().toISOString();
+      return { id: randomUUID(), aud: 'authenticated', role: '', email: normalized, phone: '', created_at: now, updated_at: now, app_metadata: {}, user_metadata: {}, identities: [] };
+    }
+    const id = await this.db.admin(async (pg) => {
+      const row = await pg.query<{ id: string }>('insert into auth.users (email, raw_user_meta_data) values ($1, $2) returning id', [
+        normalized,
+        JSON.stringify(metadata ?? {}),
+      ]);
+      await pg.query('insert into local_auth.credentials (user_id, password_hash) values ($1, $2)', [row.rows[0]!.id, hashPassword(password)]);
+      return row.rows[0]!.id;
+    });
+    return this.issueSession((await this.findUser('id', id))!);
+  }
+
   private async findUser(where: 'id' | 'email', value: string): Promise<UserRow | null> {
     return this.db.admin(async (pg) => {
       const sql =

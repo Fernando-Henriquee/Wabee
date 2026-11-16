@@ -1,0 +1,3943 @@
+Wabee — Especificação do Sistema de Gestão
+
+Wabee — Especificação do Sistema de Gestão
+
+Produção, estoque e financeiro para impressão 3D · O​ ct 21, 2026 · @​ Leandri
+
+1. Visão geral
+
+O sistema é uma aplicação web única em que a Wabee registra cada operação uma vez
+(compra, impressão, venda, pagamento) e o sistema deriva dela estoque, custos,
+resultado e caixa. Este documento é a especificação para desenvolvimento: cada módulo
+traz histórias de usuário, critérios de aceite e notas técnicas, e a seção 17 ordena tudo em
+fases.
+
+1.1 Objetivos
+
+1. Controlar todo item que entra e sai: filamentos, componentes, embalagens,
+    consumíveis, ferramentas, equipamentos e produtos prontos.
+
+2. Calcular o custo de cada peça em camadas: direto (materiais), operacional (energia e
+    depreciação) e trabalho.
+
+3. Separar o que foi produzido, o que está em estoque, o que está reservado, o que foi
+    vendido e o que foi recebido.
+
+4. Mostrar caixa, parcelas e investimento do dono separados do resultado do negócio.
+5. Manter a operação simples: o ciclo comprar → produzir → vender → receber não pode
+
+    exigir lançamento repetido do mesmo dado.
+
+1.2 Escopo da versão 1
+
+Dentro da v1                                 Fora da v1 (evoluções)
+
+Cadastro de itens, filamentos, componentes, Emissão de nota fiscal (NF-e / NFS-e)
+embalagens, ferramentas
+
+Estoque por movimentações, carretéis,        Integração com APIs de marketplace
+inventário                                   (Shopee, Mercado Livre)
+
+Equipamentos, taxas de custo com vigência, Integração em tempo real com a impressora
+manutenção
+
+Compras, recebimento, parcelas, pagador      Loja virtual / catálogo público
+(dono/empresa)
+
+Produtos, variações, fichas técnicas, preço  Aplicativo nativo (a v1 é web responsiva)
+sugerido
+
+                                                                                   Page 1 of 87
+Wabee — Especificação do Sistema de Gestão
+
+Dentro da v1                                Fora da v1 (evoluções)
+
+Impressões (mesas), falhas, pós-            Multiempresa
+processamento
+
+Pedidos, reservas, entregas, recebimentos,  Contabilidade fiscal oficial
+canais
+
+Caixa, contas a pagar/receber, movimentos   Conciliação bancária automática por API
+do dono, DRE gerencial
+
+Dashboard e relatórios, exportação
+CSV/XLSX
+
+Importação de G-code/3MF do fatiador (fase
+final da v1)
+
+1.3 Perfis de usuário
+
+Perfil        Quem                          O que acessa
+
+Dono          Fundador da Wabee, usuário    Tudo, incluindo configurações, financeiro e
+              único hoje                    estornos
+
+Produção Ajudante futuro                    Impressões, consulta de estoque, sem
+                                            valores financeiros
+Leitura Contador ou sócio futuro
+                                            Relatórios, dashboard e exportação, sem
+                                            editar
+
+1.4 Convenções deste documento
+
+    Histórias: US-<módulo>.<n> . Regras de negócio: RN-<n> . Ambas são citadas no código
+    (docstring) e nos testes.
+    Prioridade: P1 = obrigatório no MVP; P2 = logo após o MVP; P3 = desejável.
+    Critérios de aceite no formato Dado / Quando / Então; cada um vira pelo menos um
+    teste automatizado.
+    Moeda BRL. Valores monetários com 2 casas na tela; custos unitários com 6 casas no
+    banco.
+    Massa em gramas, tempo em minutos no banco e em h:min na tela, datas no fuso
+    America/Sao_Paulo, formato brasileiro (1.234,56 e dd/mm/aaaa).
+    "Deve" = obrigatório; "pode" = opcional.
+
+                                                                          Page 2 of 87
+Wabee — Especificação do Sistema de Gestão
+
+1.5 Ponto de partida da Wabee
+
+    Investimento inicial de R$ 8.509,30 pago pelo dono, parcelado: R$ 5.646,19 em 18x e R$
+    2.863,11 em 12x, cerca de R$ 552,27 por mês enquanto ambos estiverem ativos.
+    Taxa operacional calculada pelo dono: R$ 1,20 por hora de impressão (energia +
+    depreciação, ainda sem divisão entre as duas).
+    Filamento de referência: R$ 100 por kg, ou R$ 0,10 por grama.
+    Primeira venda: 2 peças a R$ 5,00, com custo estimado de R$ 1,66 por peça.
+O ciclo principal de operações e seus efeitos aparece no diagrama da seção 3.
+
+2. Glossário e definições
+
+Estes termos têm significado fixo no código, na interface e nos relatórios. O nome técnico
+(coluna 2) é o usado em models, enums e variáveis.
+
+2.1 Itens e estoque
+
+Termo         Nome técnico  Definição
+Item
+Tipo de item  Item          Qualquer coisa que a Wabee guarda e
+              Item.kind     controla quantidade: filamento, argola,
+Filamento                   caixa, alicate, peça pronta.
+Componente    FILAMENT
+Embalagem     COMPONENT     FILAMENT , COMPONENT , PACKAGING ,
+Consumível    PACKAGING     CONSUMABLE , TOOL , FINISHED_GOOD .
+Ferramenta    CONSUMABLE    Define campos, regras de baixa e onde o
+              TOOL          custo vai.
+
+                            Matéria-prima de impressão, controlada em
+                            gramas. Ex.: PLA preto 1,75 mm.
+
+                            Peça comprada que vai dentro do produto:
+                            argola, ímã, parafuso, LED. Controlado em
+                            unidades.
+
+                            Saquinho, caixa, etiqueta, cartão de
+                            agradecimento. Baixa na entrega da venda.
+
+                            Material gasto sem ir no produto: cola de
+                            mesa, álcool isopropílico, lixa. Baixa manual
+                            ou por estimativa mensal.
+
+                            Item durável, não vendável e não
+                            consumido: alicate, espátula, paquímetro.
+                            Controla quantidade, local e condição.
+
+                            Page 3 of 87
+Wabee — Especificação do Sistema de Gestão
+
+Termo                                       Nome técnico   Definição
+Equipamento
+                                            Equipment      Ativo que gera custo por hora de uso:
+Produto pronto                                             impressora, secadora de filamento. Fica
+                                                           fora do estoque de itens.
+Carretel / lote
+                                            FINISHED_GOOD  Peça fabricada e aprovada, disponível para
+Movimentação                                               venda. Cada variação de produto tem um
+                                                           item deste tipo.
+Saldo
+                                            StockLot       Unidade física de entrada: um carretel de
+Saldo livre                                                filamento ou um pacote de argolas
+                                                           recebido. Guarda saldo restante.
+Custo médio
+ponderado                                   StockMovement  Registro imutável de entrada ou saída de
+Ajuste de inventário                                       um item, com quantidade, custo e origem. É
+Estorno                                                    a fonte da verdade do estoque.
+
+                                            StockBalance   Quantidade e custo médio atuais de um
+                                                           item. É derivado das movimentações e
+                                                           mantido em cache.
+
+                                            qty_available  Saldo menos quantidade reservada. Só o
+                                                           saldo livre pode ser reservado ou vendido
+                                                           em pronta entrega.
+
+                                            avg_unit_cost  Custo unitário recalculado a cada entrada
+                                                           (RN-01). Usado para valorizar todas as
+                                                           saídas.
+
+                                            ADJUSTMENT_IN/OUT Correção do saldo após contagem ou
+                                                                            pesagem física, sempre com motivo.
+
+                                            REVERSAL       Movimentação inversa que anula outra.
+                                                           Nada é apagado nem editado.
+
+2.2 Produtos e produção
+
+Termo                 Nome técnico                         Definição
+Produto
+                      Product                              O que se vende, de forma genérica:
+                                                           "Chaveiro Abelha".
+Variação              ProductVariant
+                                                           Versão vendável com SKU próprio:
+                                                           "Chaveiro Abelha — amarelo".
+
+                                                                                                                Page 4 of 87
+Wabee — Especificação do Sistema de Gestão
+
+Termo           Nome técnico                Definição
+Ficha técnica
+                BomVersion +                Receita da variação: gramas por filamento,
+                                            componentes, tempo de impressão e de
+                BomLine                     acabamento. Versionada.
+
+Impressão (mesa) PrintJob                   Um trabalho na impressora. Consome
+                                            tempo de máquina e filamento. Pode
+Saída da        PrintJobOutput              produzir várias peças, de variações
+impressão                                   diferentes.
+
+Peça aprovada   qty_good                    Cada variação produzida dentro de uma
+                                            impressão, com quantidade planejada,
+Falha / refugo  qty_failed                  aprovada e com falha.
+
+Pós-            PostProcessEntry            Unidade que passou na inspeção e entra no
+processamento   allocation_share            estoque de produto pronto.
+
+Rateio                                      Unidade perdida. Seu custo vai para "custo
+                                            de falhas" (RN-09).
+Fatiador        slicer
+                                            Trabalho após a impressão: remover
+                                            suporte, lixar, pintar, montar argola.
+
+                                            Fração dos custos de uma impressão
+                                            atribuída a cada saída (RN-08).
+
+                                            Programa que gera o G-code/3MF e estima
+                                            gramas e tempo (Orca, Bambu Studio,
+                                            PrusaSlicer, Cura).
+
+2.3 Custos
+
+Termo           Nome técnico                Definição
+
+Camada de custo CostLayer                   Agrupamento do custo: MATERIAL , ENERGY ,
+                                            DEPRECIATION , OPERATIONAL (energia +
+Custo direto    MATERIAL                    depreciação sem divisão), LABOR .
+
+Custo           ENERGY +                    Filamento, componentes e embalagens
+operacional                                 efetivamente consumidos. Dinheiro que já
+                DEPRECIATION                saiu ou vai sair.
+
+                                            Energia elétrica e desgaste do equipamento,
+                                            calculados por hora de impressão. São
+                                            estimativas.
+
+                                            Page 5 of 87
+Wabee — Especificação do Sistema de Gestão
+
+Termo            Nome técnico               Definição
+Custo de
+trabalho         LABOR                      Tempo do dono ou ajudante × valor da hora.
+                                            Opcional; quando zero, a margem mostra
+Taxa             CostRate                   quanto sobra para pagar o trabalho.
+
+Depreciação      DEPRECIATION               Valor por unidade de uso (R$ por hora, R$
+                                            por kWh) com data de início e fim de
+Vida útil        useful_life_hours          vigência.
+
+Valor residual   residual_value             Perda de valor do equipamento pelo uso.
+                                            Calculada por hora (RN-05).
+Custo previsto   est_*
+                                            Horas de impressão esperadas até o
+Custo apurado    actual_*                   equipamento precisar ser substituído.
+
+Snapshot de      *_snapshot                 Quanto o equipamento ainda valeria no fim
+custo            cogs                       da vida útil.
+
+CMV                                         Calculado pela ficha técnica antes de
+                                            imprimir.
+Custo de falhas  scrap_cost
+                                            Calculado com os dados reais informados ao
+                                            finalizar a impressão.
+
+                                            Cópia dos valores e taxas usados no
+                                            momento da operação. Nunca é recalculada.
+
+                                            Custo das mercadorias vendidas: custo
+                                            médio, por camada, das unidades entregues.
+
+                                            Material e tempo gastos em peças perdidas
+                                            e impressões que falharam.
+
+2.4 Vendas       Nome técnico               Definição
+
+  Termo          SalesChannel               Onde a venda acontece: venda
+  Canal                                     direta, Instagram/WhatsApp,
+                 SalesOrder                 Shopee, Mercado Livre, feira. Tem
+  Pedido                                    taxas próprias.
+
+                                            Venda combinada com o cliente.
+                                            Tipo PRONTA_ENTREGA (sai do
+                                            estoque) ou ENCOMENDA (produzida
+                                            para ele).
+
+                                            Page 6 of 87
+Wabee — Especificação do Sistema de Gestão
+
+Termo               Nome técnico             Definição
+Reserva
+                    Reservation              Quantidade de produto pronto
+                                             separada para um pedido. Reduz o
+Entrega             Delivery                 saldo livre, não o saldo.
+
+Recebimento         ReceivableInstallment    Momento em que as peças saem do
+                                             estoque. Gera o CMV e reconhece a
+                    pago                     receita.
+
+Receita potencial   potential_revenue        Entrada do dinheiro da venda. Pode
+                                             acontecer antes (sinal), na hora ou
+Margem potencial    potential_margin         depois da entrega.
+
+Margem de           contribution_margin      Saldo livre de produto pronto ×
+contribuição                                 preço de referência.
+
+Margem por hora de  margin_per_machine_hour  Receita potencial − custo do
+máquina                                      estoque − taxas e embalagem
+                                             estimadas (RN-14).
+Preço sugerido      suggested_price
+                                             Receita líquida − CMV − taxas do
+                                             canal − embalagem − frete pago
+                                             (RN-13).
+
+                                             Margem de contribuição por
+                                             unidade ÷ horas de máquina por
+                                             unidade (RN-15).
+
+                                             Preço que atinge a margem alvo
+                                             depois de taxas e impostos (RN-17).
+
+2.5 Financeiro
+
+Termo               Nome técnico             Definição
+Conta financeira
+                    PaymentAccount           Onde o dinheiro está ou passa:
+                                             conta bancária, dinheiro em
+Conta a pagar       Payable                  espécie, cartão de crédito, carteira
+                                             digital. Pertence à empresa ou ao
+Conta a receber     Receivable               dono.
+
+                                             Obrigação com um fornecedor,
+                                             dividida em parcelas.
+
+                                             Direito de receber de um cliente,
+                                             dividido em parcelas.
+
+                                             Page 7 of 87
+Wabee — Especificação do Sistema de Gestão
+
+Termo              Nome técnico             Definição
+Parcela
+                   Installment              Valor com vencimento. Separa
+Pagador                                     principal e juros.
+                   payer
+                                            EMPRESA ou DONO . Parcela paga
+Aporte de capital  CAPITAL_CONTRIBUTION     pelo dono não sai do caixa da
+                                            empresa (RN-19).
+Empréstimo do      OWNER_LOAN
+dono                                        Dinheiro do dono investido no
+Reembolso ao       OWNER_REIMBURSEMENT      negócio, sem devolução
+dono                                        obrigatória.
+Retirada           PRO_LABORE /
+                                            Dinheiro do dono que a empresa
+Caixa              PROFIT_DISTRIBUTION      deve devolver.
+
+                   CashTransaction          Devolução de uma despesa paga
+                                            pelo dono.
+Regime de          accrual
+competência                                 Dinheiro que sai da empresa para o
+                                            dono como remuneração pelo
+Regime de caixa    cash                     trabalho ou distribuição de lucro.
+
+DRE gerencial      IncomeStatement          Dinheiro que efetivamente entrou
+                                            ou saiu de uma conta da empresa,
+Fechamento de      MonthClose               na data em que aconteceu.
+mês                EnergyReconciliation
+                                            Receita e custo reconhecidos
+Conciliação de                              quando a venda é entregue, mesmo
+energia                                     sem pagamento. Base do DRE.
+
+                                            Movimento reconhecido na data do
+                                            dinheiro. Base do fluxo de caixa.
+
+                                            Demonstrativo mensal: receitas −
+                                            CMV − despesas = resultado.
+
+                                            Trava os lançamentos de um mês e
+                                            guarda os indicadores calculados.
+
+                                            Comparação entre a energia
+                                            estimada pelas impressões e a
+                                            conta de luz real do mês.
+
+                                            Page 8 of 87
+Wabee — Especificação do Sistema de Gestão
+
+3. Arquitetura e stack
+
+A aplicação é um monólito Django com PostgreSQL, renderizado no servidor, com toda
+regra de negócio em serviços de domínio transacionais. Essa escolha mantém o projeto
+simples para um dev só e garante que estoque e financeiro nunca fiquem inconsistentes.
+
+3.1 Stack
+
+Camada       Escolha                          Motivo
+Linguagem    Python 3.12+
+Framework                                     Ecossistema maduro, Decimal
+             Django 5.x                       nativo para dinheiro
+Banco
+Interface    PostgreSQL 16                    ORM, admin, autenticação,
+Gráficos                                      migrações e transaction.atomic
+Formulários  Templates Django + HTMX +        prontos
+Exportação   Alpine.js + Tailwind CSS
+Tarefas      Apache ECharts (ou Chart.js)     NUMERIC exato, constraints, SELECT
+assíncronas                                   ... FOR UPDATE , índices parciais
+Testes       django-crispy-forms ou widgets
+Qualidade    próprios Tailwind                Telas rápidas e responsivas sem SPA
+Erros        openpyxl (XLSX) e csv nativo     separada
+Deploy       django-q2 (a partir da fase 8)
+Backup                                        Barras empilhadas, linhas e funil com
+             pytest, pytest-django,           pouco código
+             factory_boy, hypothesis
+             ruff, mypy (modo gradual), pre-  Máscara de moeda e números em
+             commit                           pt-BR
+             Sentry (plano gratuito)
+             Docker Compose em VPS, ou        Relatórios para o contador
+             Railway/Render
+             pg_dump diário para              Importação de G-code grande e
+             armazenamento externo (S3        snapshots diários
+             compatível)
+                                              Testes de propriedade no razão de
+                                              estoque
+
+                                              Padrão único desde o início
+
+                                              Alerta de exceções em produção
+
+                                              Um container web + um banco
+                                              gerenciado
+
+                                              Seção 16
+
+                                              Page 9 of 87
+Wabee — Especificação do Sistema de Gestão
+
+3.2 Princípios obrigatórios
+
+ 1. Razão de estoque imutável. StockMovement só recebe INSERT. O saldo é a soma das
+     movimentações. Correção = estorno (nova movimentação inversa).
+
+ 2. Toda regra em serviços. Views, admin e comandos chamam funções de services.py ;
+     nenhum código altera estoque, custo ou financeiro fora deles. O admin do Django fica
+     somente leitura para tabelas de movimentação.
+
+ 3. Uma operação = uma transação. Cada serviço roda em transaction.atomic() e trava
+     os saldos envolvidos com select_for_update() antes de calcular. Se qualquer passo
+     falhar, nada é gravado.
+
+ 4. Snapshot de custo. Toda operação grava os custos e taxas usados naquele momento.
+     Mudança posterior de taxa ou preço nunca recalcula operações passadas.
+
+ 5. Taxas com vigência. CostRate tem valid_from e valid_to . O serviço busca a taxa
+     vigente na data da operação, não a mais recente.
+
+ 6. Competência separada de caixa. Resultado (DRE) usa a data da entrega e do
+     consumo; fluxo de caixa usa a data do pagamento. As duas visões vêm das mesmas
+     operações, por consultas diferentes.
+
+ 7. Origem rastreável. Toda movimentação de estoque e todo lançamento financeiro
+     aponta o documento de origem ( source_type + source_id ) e o usuário.
+
+ 8. Cancelar, nunca apagar. Cadastros podem ser desativados ( active=False ).
+     Operações confirmadas só podem ser canceladas ou estornadas, com motivo.
+
+ 9. Decimal sempre. Nunca float . Precisões: dinheiro NUMERIC(14,2) ; custo unitário
+      NUMERIC(16,6) ; quantidade NUMERIC(14,3) ; taxa percentual NUMERIC(7,4) .
+
+10. Idempotência nas telas. Formulários de operação enviam um idempotency_key (UUID
+     gerado na tela) para que duplo clique não registre a produção ou venda duas vezes.
+
+3.3 Apps Django
+
+App        Responsabilidade                      Principais models
+
+core       Configurações, usuários, auditoria,   Settings , AuditLog ,
+           utilitários de dinheiro e datas,
+catalog    enums                                 IdempotencyKey
+inventory
+           Cadastro de itens e especificações    Item , FilamentSpec , ToolSpec ,
+           por tipo
+                                                 Supplier
+
+           Razão de estoque, saldos, carretéis,  StockMovement , StockBalance ,
+           reservas, inventário                  StockLot , Reservation ,
+
+                                                 InventoryCount
+
+                                                                        Page 10 of 87
+Wabee — Especificação do Sistema de Gestão
+
+App        Responsabilidade                     Principais models
+
+assets     Equipamentos, taxas, manutenção,     Equipment , CostRate ,
+           horímetro
+                                                MaintenanceLog
+purchasing Compras, linhas, recebimentos
+                                                Purchase , PurchaseLine , Receipt ,
+products   Produtos, variações, fichas
+           técnicas, preços                     ReceiptLine
+
+production Impressões, saídas, consumo, pós-    Product , ProductVariant ,
+                     processamento              BomVersion , BomLine ,
+
+sales      Clientes, canais, pedidos, entregas  ChannelPrice
+
+finance    Contas, categorias, títulos,         PrintJob , PrintJobOutput ,
+           parcelas, caixa, dono, energia,      PrintJobMaterial ,
+           fechamento
+                                                PostProcessEntry
+dashboard  Consultas agregadas, indicadores,
+importer   relatórios, exportação               Customer , SalesChannel ,
+                                                SalesOrder , SalesOrderLine ,
+           Leitura de G-code/3MF
+                                                Delivery
+
+                                                PaymentAccount ,
+                                                FinancialCategory , Payable ,
+                                                Receivable , Installment ,
+                                                CashTransaction , OwnerMovement ,
+                                                EnergyBill , MonthClose
+
+                                                DailyMetric (opcional)
+
+                                                SlicerImport
+
+3.4 Camadas dentro de cada app
+
+     models.py : estrutura e constraints de banco. Sem regra de negócio além de
+    validações simples.
+     services.py : operações que mudam estado ( receive_purchase ,
+     finish_print_job , deliver_order , pay_installment ). Recebem objetos ou IDs,
+    validam, gravam tudo numa transação e devolvem o resultado.
+     selectors.py : consultas de leitura reutilizáveis ( stock_position() ,
+     potential_margin() , cash_projection() ).
+     forms.py e views.py : validação de entrada e chamada do serviço. Uma view nunca
+    chama .save() em model de operação.
+     templates/<app>/ : telas e parciais HTMX.
+     tests/ : um arquivo por serviço; cada critério de aceite deste documento vira teste.
+
+                                                Page 11 of 87
+Wabee — Especificação do Sistema de Gestão
+
+3.5 Saldo em cache e reconciliação
+
+ StockBalance guarda quantidade, reservado e custo médio por camada para cada item.
+Ele é atualizado na mesma transação da movimentação. Um comando manage.py
+rebuild_balances recalcula todos os saldos a partir do razão e aponta divergências; ele
+roda em teste automatizado e pode rodar semanalmente em produção.
+
+3.6 Fluxo principal de operações
+
+O diagrama abaixo mostra o que cada operação faz no estoque e no financeiro.
+
+fluxo de operações · 6 etapas e seus efeitos
+
+Caixas com borda clara indicam que a operação não mexe naquela área. Pagamentos e
+recebimentos acontecem em qualquer ponto do ciclo, conforme os vencimentos.
+
+4. Modelo de dados
+
+O banco tem cerca de 35 tabelas em 10 apps; as tabelas centrais são StockMovement
+(estoque), PrintJob (produção), SalesOrder (vendas) e Installment (financeiro).
+Toda tabela herda de um BaseModel com id (bigint), created_at , updated_at e
+ created_by (FK usuário), que não são repetidos abaixo.
+
+                                                                                                                                                                                                                                          Page 12 of 87
+Wabee — Especificação do Sistema de Gestão
+
+Tipos usados: money = NUMERIC(14,2) ; cost = NUMERIC(16,6) ; qty = NUMERIC(14,3) ;
+pct = NUMERIC(7,4) (0,1250 = 12,5%); enum = TextChoices do Django.
+
+4.1 core
+
+Settings (registro único)
+
+Campo                                       Tipo          Regras
+                                                          "Wabee"
+company_name                                str(120)      Padrão America/Sao_Paulo
+                                                          Padrão False (RN-20)
+timezone                                    str           Padrão False (RN-09)
+                                                          CAPITAL_CONTRIBUTION ou OWNER_LOAN ;
+allow_negative_stock                        bool          padrão capital (RN-19)
+                                                          Usado na margem potencial (RN-14)
+absorb_scrap_cost                           bool
+                                                          Margem alvo do preço sugerido (RN-17)
+default_owner_funding_type enum                           CPF_SEM_CNPJ , MEI , SIMPLES ; define
+                                                          impostos
+default_channel                             FK            Imposto sobre venda, quando aplicável
+                                            SalesChannel  Valor fixo mensal no MEI, lançado como
+margin_target_pct                                         despesa
+tax_regime                                  pct           Padrão 14; alerta quando o estoque cobre
+                                                          menos dias que isso
+                                            enum
+
+sales_tax_pct                               pct
+mei_monthly_das                             money
+
+coverage_alert_days                         int
+
+Campos adicionais de Settings: go_live_date (data de início do uso; antes dela só
+entram operações históricas, US-3.6 e US-6.11), filament_reference_cost_g (padrão
+0,10), onboarding_state (JSON com o progresso do assistente, US-0.11).
+
+AuditLog: user , action ( CREATE , UPDATE , CANCEL , REVERSE , CLOSE_MONTH , LOGIN ),
+model_label , object_id , changes (JSON antes/depois), ip . Somente inserção.
+
+Attachment: content_type + object_id (genérico), file , kind ( NOTA , COMPROVANTE ,
+FOTO , MODELO_3D , GCODE ), description .
+
+IdempotencyKey: key (UUID, único), operation , result_id . Bloqueia reenvio do
+mesmo formulário.
+
+                                                          Page 13 of 87
+Wabee — Especificação do Sistema de Gestão
+
+4.2 catalog
+
+Item
+
+Campo         Tipo                                        Regras
+
+sku           str(40), único                              Gerado: FIL-PLA-PRT-001 , CMP-ARG-25-001 ,
+
+                                                          PRD-ABELHA-AMA
+
+name          str(120)                                    Obrigatório
+
+kind          enum                                        FILAMENT , COMPONENT , PACKAGING , CONSUMABLE ,
+                                                          TOOL , FINISHED_GOOD
+
+unit          enum                                        G , UN , ML , M . Filamento sempre G
+
+is_stock_tracked bool                                     False permite consumível sem controle de saldo
+
+is_sellable   bool                                        True para produto pronto; componente pode ser
+                                                          vendido avulso
+
+min_qty       qty                                         Estoque mínimo para alerta
+
+reorder_qty   qty                                         Quantidade sugerida de recompra
+
+location      str(60)                                     Ex.: "Gaveta 2", "Caixa seca"
+
+default_supplier FK Supplier, nulo
+
+photo         image, nulo
+
+active        bool                                        Desativar esconde das listas, não apaga
+
+Constraint: kind = FILAMENT exige unit = G e um FilamentSpec ; kind =
+FINISHED_GOOD exige ProductVariant vinculada.
+
+FilamentSpec (1:1 com Item)
+
+Campo                                       Tipo          Regras
+material                                    enum          PLA , PLA_PLUS , PETG , ABS , ASA , TPU , NYLON ,
+
+brand                                       str           OUTRO
+color_name /                                str / str(7)
+color_hex                                                 Hex usado na interface como bolinha de cor
+diameter_mm
+                                            NUMERIC(4,2) Padrão 1,75
+
+                                                                                                      Page 14 of 87
+Wabee — Especificação do Sistema de Gestão
+
+Campo                                       Tipo            Regras
+density_g_cm3
+                                            NUMERIC(5,3) Valor típico por material, editável (usado para
+nominal_spool_g                                                      converter metros em gramas)
+empty_spool_tare_g
+needs_drying                                int             Padrão 1000
+
+                                            int             Peso do carretel vazio, para pesagem (US-1.7)
+
+                                            bool            Alerta antes de imprimir
+
+ToolSpec (1:1 com Item de tipo TOOL ): condition ( BOA , DESGASTADA , QUEBRADA ,
+PERDIDA ), acquired_at , acquisition_value (informativo, não entra no custo de
+produção).
+
+Supplier: name , document (CPF/CNPJ, opcional), kind ( LOJA_ONLINE , MARKETPLACE ,
+LOJA_FISICA ), contact , url , notes , active .
+
+4.3 inventory
+
+StockMovement (razão, somente INSERT)
+
+Campo                                       Tipo            Regras
+item                                        FK Item
+lot                                         FK StockLot,    Obrigatório para filamento
+                                            nulo
+occurred_at                                 datetime        Data do fato (pode ser retroativa dentro de
+                                                            mês aberto)
+type                                        enum            Ver tabela 4.3.1
+qty                                         qty, com sinal  Positivo = entrada; negativo = saída; nunca
+                                                            zero
+unit_cost_material                          cost            Snapshot por camada
+unit_cost_energy                            cost            Só em produto pronto
+unit_cost_depreciation                      cost            Só em produto pronto
+unit_cost_operational                       cost            Usado quando energia e depreciação não
+                                                            estão separadas
+unit_cost_labor                             cost            Só em produto pronto
+unit_cost_total                             cost            Soma das camadas
+
+                                                                                      Page 15 of 87
+Wabee — Especificação do Sistema de Gestão
+
+Campo                                       Tipo            Regras
+total_cost                                  money
+qty_after /                                 qty / cost      qty × unit_cost_total
+avg_cost_after
+source_type / source_id                     str / bigint    Saldo e custo médio depois deste
+reason                                      text            movimento
+                                                            Documento de origem
+reverses                                    FK self, nulo,  Obrigatório em ajuste, perda, brinde, uso
+idempotency_key                             único           pessoal e estorno
+                                                            Movimento que este estorna
+                                            UUID, nulo
+
+Índices: (item, occurred_at) , (source_type, source_id) . Proteção: save() recusa
+update e delete() levanta erro; opcionalmente um trigger PostgreSQL bloqueia
+UPDATE/DELETE.
+
+4.3.1 Tipos de movimentação
+
+Tipo                                        Sinal           Origem             Efeito no custo
+                                            +
+OPENING                                     +               Saldo inicial      Recalcula custo médio
+PURCHASE_RECEIPT
+                                            −               Recebimento de     Recalcula custo médio
+PRODUCTION_CONSUMPTION                      −               compra             (RN-01)
+ASSEMBLY_CONSUMPTION
+                                            +               Impressão concluída Sai pelo custo médio
+PRODUCTION_OUTPUT
+                                            −               Montagem / pós-    Sai pelo custo médio
+SALE_ISSUE                                  −               processamento
+PACKAGING_ISSUE                             −
+MAINTENANCE_CONSUMPTION                     +/−             Peças aprovadas    Recalcula custo médio
+                                                                               por camada do produto
+ADJUSTMENT_IN /                                                                pronto
+
+ADJUSTMENT_OUT                                              Entrega de pedido  Gera CMV
+
+                                                            Entrega de pedido  Despesa de venda
+
+                                                            Manutenção         Despesa de manutenção
+
+                                                            Inventário         Entrada pelo custo
+                                                                               médio; diferença vai
+                                                                               para "ajustes de
+                                                                               estoque"
+
+                                                                                                 Page 16 of 87
+Wabee — Especificação do Sistema de Gestão
+
+Tipo                                        Sinal Origem                 Efeito no custo
+
+LOSS                                        −           Perda, quebra,   Despesa de perdas
+
+GIFT / SAMPLE                                           umidade
+
+PERSONAL_USE                                −           Brinde, amostra  Despesa de marketing
+
+RETURN_IN                                   −           Uso pessoal do dono Movimento do dono
+REVERSAL
+                                                                         (retirada em bens)
+
+                                            +           Devolução de cliente Volta pelo custo da
+
+                                                                         venda
+
+                                            inverso Estorno              Mesmo custo do
+                                                                         movimento original
+
+StockBalance (1:1 com Item, cache): qty_on_hand , qty_reserved , avg_cost_material ,
+avg_cost_energy , avg_cost_depreciation , avg_cost_operational , avg_cost_labor ,
+avg_cost_total , value_total , last_movement_at . Constraints: qty_reserved >= 0 ,
+qty_reserved <= qty_on_hand , qty_on_hand >= 0 quando allow_negative_stock =
+False .
+
+StockLot
+
+Campo                                       Tipo        Regras
+item                                        FK Item
+lot_code                                    str, único  Ex.: FIL-PLA-PRT-007 ; impresso em
+                                                        etiqueta/QR (P3)
+received_at                                 datetime
+                                            qty         0 <= qty_remaining <= qty_initial
+qty_initial /
+qty_remaining                               cost        Custo de entrada do lote (informativo; a
+                                                        valoração usa o médio)
+unit_cost_in                                            FECHADO , ABERTO , ESGOTADO , DESCARTADO
+
+status                                      enum        Recebimento ou saldo inicial
+opened_at / finished_at
+                                            datetime,
+source_type / source_id                     nulo
+
+Reservation: item (produto pronto), order_line (FK), qty , status ( ATIVA ,
+CONSUMIDA , CANCELADA ), released_at .
+
+                                                                                             Page 17 of 87
+Wabee — Especificação do Sistema de Gestão
+
+InventoryCount: started_at , finished_at , status ( ABERTA , CONCLUIDA , CANCELADA ),
+scope_kind (filtro por tipo), notes .
+InventoryCountLine: count , item , lot (nulo), qty_system (snapshot ao abrir),
+qty_counted , weighed_gross_g (filamento: peso na balança com carretel), diff ,
+adjustment_movement (FK, nulo).
+
+4.4 assets
+
+Equipment
+
+Campo                                       Tipo              Regras
+name                                        str               Ex.: "Impressora 1"
+kind                                        enum              PRINTER , DRYER , POST_PROCESS ,
+
+brand / model / serial                      str               OTHER
+
+acquired_at                                 date              Valor do bem, sem juros
+                                                              Vínculo com a compra
+acquisition_cost                            money
+                                                              Padrão 0
+purchase_line                               FK PurchaseLine,  Base da depreciação (RN-05)
+                                            nulo              Consumo médio imprimindo (RN-04)
+                                                              Horas usadas antes do sistema
+residual_value                              money             Alerta de manutenção preventiva
+                                                              ATIVO , MANUTENCAO , BAIXADO
+useful_life_hours                           int
+
+avg_power_w                                 int
+
+initial_hours                               qty
+
+maintenance_interval_hours int, nulo
+
+status                                      enum
+
+Campos calculados (selector, não colunas): hours_used , accumulated_depreciation ,
+book_value , hours_since_maintenance .
+
+CostRate
+
+                                                              Page 18 of 87
+Wabee — Especificação do Sistema de Gestão
+
+Campo           Tipo                               Regras
+rate_type       enum                               ENERGY_PRICE_KWH , ENERGY_PER_HOUR ,
+                                                   DEPRECIATION_PER_HOUR ,
+equipment       FK, nulo                           OPERATIONAL_PER_HOUR , MAINTENANCE_PER_HOUR ,
+value           cost
+valid_from /    date / date                        LABOR_PER_HOUR
+valid_to        nulo
+                                                   Nulo = taxa global
+source          enum
+calc_params     JSON                               Sem sobreposição por (rate_type, equipment) :
+                                                   constraint de exclusão com daterange (extensão
+                                                   btree_gist )
+                                                   MANUAL ou CALCULATED
+                                                   Ex.: {"power_w": 120, "kwh_price": "0.95"}
+
+MaintenanceLog: equipment , performed_at , kind ( PREVENTIVA , CORRETIVA ,
+TROCA_BICO , TROCA_MESA , LUBRIFICACAO , CALIBRACAO , OUTRO ), hours_at , cost ,
+payable (FK, nulo), downtime_hours , notes . Peças de reposição usadas saem do
+estoque com MAINTENANCE_CONSUMPTION .
+
+4.5 purchasing
+
+Purchase
+
+Campo                                       Tipo        Regras
+number                                      str, único
+supplier                                    FK          CMP-2026-0001
+purchased_at                                date
+invoice_ref                                 str         Número da nota/pedido
+status                                      enum        RASCUNHO , CONFIRMADA ,
+                                                        RECEBIDA_PARCIAL , RECEBIDA ,
+goods_total / freight_total /               money
+discount_total                              money       CANCELADA
+
+cash_price_total                                        Valor à vista (bens + frete −
+                                                        desconto)
+
+                                                        Page 19 of 87
+Wabee — Especificação do Sistema de Gestão
+
+Campo                                       Tipo            Regras
+installments_total                          money           Soma das parcelas
+interest_total                              money
+                                                            installments_total −
+payment_method                              enum
+                                                            cash_price_total (RN-03)
+payment_account                             FK              PIX , DINHEIRO , DEBITO ,
+                                            PaymentAccount  CREDITO_VISTA ,
+payer                                       enum            CREDITO_PARCELADO , BOLETO
+owner_funding_type                          enum, nulo      Ex.: cartão pessoal do dono
+installments_count /                        int / date
+first_due_date                                              EMPRESA ou DONO
+is_opening                                                  Obrigatório se payer = DONO
+
+                                            bool            Compra anterior ao sistema (US-
+                                                            3.6)
+
+PurchaseLine: purchase , line_kind ( ITEM , EQUIPMENT , EXPENSE ), item (nulo),
+equipment (nulo, criado no recebimento), expense_category (nulo), description , qty ,
+unit_price , freight_alloc , discount_alloc , landed_unit_cost (RN-02),
+qty_received . Constraint: exatamente um alvo coerente com line_kind .
+
+Receipt: purchase , received_at , notes . ReceiptLine: receipt , purchase_line , qty ,
+spool_count (filamento: N carretéis viram N lotes), lot_codes (gerados).
+
+4.6 products
+
+Product: name , slug , category ( CHAVEIRO , DECORACAO , UTILIDADE , BRINQUEDO ,
+PERSONALIZADO , OUTRO ), description , photo , model_source ( PROPRIO ,
+TERCEIRO_LIVRE , TERCEIRO_LICENCIADO ), license_notes , active .
+
+ProductVariant: product , sku (único), name (cor/tamanho), item (1:1 Item
+FINISHED_GOOD , criado automaticamente), reference_price , active .
+
+BomVersion
+
+Campo                                             Tipo  Regras
+variant                                           FK    Sequencial por variação
+version                                           int
+
+                                                                                         Page 20 of 87
+Wabee — Especificação do Sistema de Gestão
+
+Campo                                       Tipo  Regras
+status                                      enum  RASCUNHO , ATIVA , ARQUIVADA ; uma única
+                                                  ATIVA por variação (índice único parcial)
+units_per_plate                             int   Quantas cabem numa mesa
+                                                  Do fatiador ou manual
+est_print_minutes_per_plate                 int   Acabamento e montagem
+
+est_post_process_minutes_per_unit int             Origem dos números
+
+default_equipment                           FK,
+                                            nulo
+
+slicer_import                               FK,
+                                            nulo
+
+BomLine: bom_version , item , line_kind ( FILAMENT_MODEL , FILAMENT_SUPPORT ,
+FILAMENT_PURGE , COMPONENT , PACKAGING , CONSUMABLE ), qty_per_unit , waste_pct ,
+consumed_at ( PRODUCTION , ASSEMBLY , DELIVERY ).
+ChannelPrice: variant , channel , price , valid_from , valid_to .
+
+4.7 production
+
+PrintJob
+
+Campo                                       Tipo        Regras
+code                                        str, único
+equipment                                   FK          IMP-2026-0001
+status                                      enum
+                                                        Impressora
+planned_for / started_at / finished_at      datetime    PLANEJADA , IMPRIMINDO ,
+est_minutes / actual_minutes                int         CONCLUIDA , FALHOU , CANCELADA
+sales_order                                 FK, nulo
+slicer_import                               FK, nulo    Encomenda
+failure_reason                              enum,
+                                            nulo        DESCOLOU_MESA , ENTUPIMENTO ,
+                                                        FALTA_FILAMENTO , QUEDA_ENERGIA ,
+                                                        ERRO_MODELO , UMIDADE ,
+                                                        CAMADA_DESLOCADA , OUTRO
+
+                                                        Page 21 of 87
+Wabee — Especificação do Sistema de Gestão
+
+Campo                                       Tipo        Regras
+                                                        Snapshot das taxas vigentes
+rate_energy_h / rate_depreciation_h / cost
+rate_operational_h / rate_labor_h                       Totais da impressão
+
+cost_material / cost_energy /               money
+cost_depreciation / cost_operational /
+cost_labor
+
+cost_total / cost_scrap                     money
+
+PrintJobOutput: print_job , variant , bom_version (snapshot), qty_planned ,
+qty_good , qty_failed , est_weight_g_per_unit , allocation_share ( NUMERIC(9,8) ),
+custos alocados por camada, custo unitário por camada, scrap_cost , failure_reason .
+Campo status: AGUARDANDO_ACABAMENTO ou LIBERADA (RN-10). Constraint ao
+concluir: qty_good + qty_failed = qty_planned .
+
+PrintJobMaterial: print_job , item (filamento), lot , est_g , actual_g (modelo +
+suporte + purga), unit_cost_snapshot , movement (FK).
+
+PostProcessEntry: output (FK PrintJobOutput), performed_at , minutes , kind
+( REMOCAO_SUPORTE , LIXA , PINTURA , MONTAGEM , INSPECAO ), labor_cost , notes .
+
+4.8 sales
+
+Customer: name , phone , email , instagram , document (opcional), endereço, notes ,
+marketing_consent (LGPD), active .
+
+SalesChannel: name , kind ( DIRETO , REDE_SOCIAL , MARKETPLACE , FEIRA ), active .
+SalesChannelFee: channel , fee_pct , fee_fixed , payment_fee_pct , valid_from ,
+valid_to .
+
+SalesOrder
+
+Campo                                       Tipo        Regras
+number                                      str, único
+customer                                    FK, nulo    PED-2026-0001
+
+channel                                     FK          Nulo = consumidor não
+kind                                        enum        identificado
+
+                                                        PRONTA_ENTREGA , ENCOMENDA
+
+                                                                                     Page 22 of 87
+Wabee — Especificação do Sistema de Gestão
+
+Campo                                       Tipo               Regras
+status
+                                            enum               RASCUNHO , CONFIRMADO ,
+ordered_at / due_date /                                        EM_PRODUCAO , PRONTO ,
+delivered_at                                                   ENTREGUE , CANCELADO
+items_subtotal / discount_total
+shipping_charged / shipping_cost            datetime / date /
+                                            datetime
+channel_fee_total /
+payment_fee_total / tax_total               money
+packaging_cost_total
+cogs_material / cogs_energy /               money              Cobrado do cliente / pago pela
+cogs_depreciation /                                            Wabee
+cogs_operational / cogs_labor /
+cogs_total                                  money              Snapshot na confirmação,
+total                                                          recalculado na entrega
+
+                                            money
+
+                                            money              Snapshot na entrega
+
+                                            money              items_subtotal −
+                                                               discount_total +
+                                                               shipping_charged
+
+SalesOrderLine: order , variant (nulo em item personalizado), custom_description ,
+qty , unit_price , discount , qty_reserved , qty_delivered , CMV unitário por camada
+(snapshot), is_gift .
+
+OrderPackaging: order , item ( PACKAGING ), qty , unit_cost_snapshot .
+
+Delivery: order , delivered_at , method ( RETIRADA , ENTREGA_PROPRIA , CORREIOS ,
+MARKETPLACE ), tracking_code .
+
+4.9 finance
+
+PaymentAccount: name , kind ( BANCO , DINHEIRO , CARTAO_CREDITO , CARTEIRA ), owner
+( EMPRESA , DONO ), opening_balance , opening_date , card_closing_day ,
+card_due_day , active .
+
+FinancialCategory: parent (FK self), code (ex.: 4.2.1 ), name , nature ( RECEITA ,
+CUSTO , DESPESA_VENDA , DESPESA_OPERACIONAL , DESPESA_FINANCEIRA , INVESTIMENTO ,
+DONO , TRANSFERENCIA ), in_income_statement (bool).
+
+                                                                                         Page 23 of 87
+Wabee — Especificação do Sistema de Gestão
+
+Payable / Receivable: number , supplier ou customer , source_type / source_id ,
+description , category , issue_date , principal_total , interest_total , total ,
+status ( ABERTO , PARCIAL , QUITADO , CANCELADO ). Payable também tem payer e
+owner_funding_type .
+
+Installment
+
+Campo                                       Tipo                  Regras
+payable / receivable                        FK, nulo              Exatamente um preenchido
+number / of_total                           int                   "3 de 18"
+due_date                                    date
+amount / principal / interest               money                 amount = principal + interest
+status                                      enum
+                                                                  ABERTA , PAGA , CANCELADA ;
+paid_at / paid_amount /                     date / money / money  "atrasada" é calculada ( ABERTA e
+fee_amount                                                        vencida)
+payer                                       enum                  fee_amount = taxa de maquininha
+account                                     FK PaymentAccount,    ou antecipação
+                                            nulo                  EMPRESA ou DONO (RN-19)
+cash_transaction /                          FK, nulo
+owner_movement                                                    Gerados na baixa
+
+CashTransaction: account (sempre da empresa), occurred_at (date), direction ( IN ,
+OUT ), amount (> 0), category , description , installment (nulo), transfer_group
+(UUID, nulo), owner_movement (nulo), reconciled (bool), source_type / source_id .
+
+OwnerMovement: kind ( CAPITAL_CONTRIBUTION , OWNER_LOAN , OWNER_PAID_EXPENSE ,
+OWNER_REIMBURSEMENT , LOAN_REPAYMENT , PRO_LABORE , PROFIT_DISTRIBUTION ,
+GOODS_WITHDRAWAL ), occurred_at , amount (> 0), direction ( DONO_PARA_EMPRESA ,
+EMPRESA_PARA_DONO ), installment / purchase / cash_transaction (nulos), notes .
+
+EnergyBill: reference_month (dia 1 do mês), kwh_total , amount , share_method
+( PERCENTUAL , KWH_MEDIDO ), business_share_pct , business_kwh , business_amount
+(calculado), payable (FK).
+
+MonthClose: month , status ( ABERTO , FECHADO ), closed_at , closed_by , metrics
+(JSON com os indicadores do mês), notes .
+
+                                                                  Page 24 of 87
+Wabee — Especificação do Sistema de Gestão
+
+5. Regras de negócio e fórmulas
+
+As 30 regras abaixo definem todo cálculo do sistema; cada uma vira uma função pura em
+ core/calculations.py (ou no app correspondente) com testes unitários usando os
+exemplos dados. Exemplos marcados como "ilustrativo" usam números inventados só
+para mostrar a conta.
+
+5.1 Custo de estoque
+
+RN-01 — Custo médio ponderado móvel. A cada entrada, o custo médio do item é
+recalculado. Saídas usam o custo médio vigente e não o alteram. Em produto pronto, o
+cálculo é feito separadamente para cada camada (material, energia, depreciação,
+operacional, trabalho).
+
+  \bar{c}_{novo} = \frac{Q_{atual} \cdot \bar{c}_{atual} + q_{entrada} \cdot
+  c_{entrada}}{Q_{atual} + q_{entrada}}
+
+    Exemplo: saldo de 400 g de PLA preto a R$ 0,10 por grama; entra um carretel de 1.000 g
+    a R$ 0,12 por grama. Novo custo médio = (40,00 + 120,00) ÷ 1.400 = R$ 0,114286 por
+    grama.
+    Se o saldo atual for zero ou negativo, o novo custo médio é o custo da entrada.
+RN-02 — Custo de aquisição. O custo unitário de entrada inclui preço, frete e desconto
+rateados. Juros do parcelamento não entram.
+
+  c_{entrada} = \frac{p \cdot q + frete_{rateado} - desconto_{rateado}}{q}
+
+    Rateio de frete e desconto proporcional ao valor de cada linha. A diferença de centavos
+    vai para a linha de maior valor.
+    Linhas de equipamento recebem rateio também (o frete da impressora faz parte do
+    valor do bem).
+RN-03 — Juros e parcelas. Juros totais = soma das parcelas − valor à vista. Cada parcela
+guarda principal e juros, distribuídos linearmente. Os juros são despesa financeira no mês
+de vencimento de cada parcela.
+    Valor das parcelas: round(total ÷ n, 2) nas primeiras n − 1; a última recebe o
+    restante.
+    Exemplo real: R$ 5.646,19 em 18x = 17 parcelas de R$ 313,68 + última de R$ 313,63. R$
+    2.863,11 em 12x = 11 de R$ 238,59 + última de R$ 238,62.
+    Antes de confirmar, o usuário pode editar o valor de cada parcela para bater com a
+    fatura; a soma tem de igualar o total.
+
+                                                                                                                                                                                                                                          Page 25 of 87
+Wabee — Especificação do Sistema de Gestão
+
+    Se o valor à vista não for conhecido, interest_total = 0 e a compra fica marcada
+    "juros não informados" (aparece em pendências).
+
+5.2 Taxas operacionais
+
+RN-04 — Energia por hora.
+
+  e_h = \frac{P_{W}}{1000} \times tarifa_{kWh}
+
+    Ilustrativo: 120 W com tarifa de R$ 0,95 por kWh dá R$ 0,114 por hora.
+    O usuário pode informar a taxa direto ( ENERGY_PER_HOUR ) ou deixar o sistema calcular
+    a partir da potência do equipamento e da tarifa ( ENERGY_PRICE_KWH ).
+RN-05 — Depreciação por hora.
+
+  d_h = \frac{custo_{aquisição} - valor_{residual}}{vida\ útil_{horas}}
+
+    Ilustrativo: impressora de R$ 3.000, residual R$ 300, vida útil de 5.000 h = R$ 0,54 por
+    hora.
+    Quando horas_usadas >= vida_útil , a depreciação passa a zero e o sistema alerta
+    "equipamento totalmente depreciado".
+RN-06 — Taxa combinada ou separada. Ordem de busca para cada impressão, na data
+dela:
+ 1. Taxas específicas do equipamento valem antes das globais.
+ 2. Se existir energia e depreciação vigentes, usa as duas separadas e operacional = 0.
+ 3. Senão, se existir OPERATIONAL_PER_HOUR vigente (hoje: R$ 1,20), usa a camada
+    "operacional não separado" e energia = depreciação = 0.
+ 4. Sem nenhuma taxa: a finalização mostra aviso e grava zero, marcando a impressão
+    como "sem taxa operacional".
+Nos dashboards, a visão agrupada "Operacional" = energia + depreciação + operacional
+não separado. A visão detalhada mostra as três.
+
+5.3 Custo de produção
+
+RN-07 — Custo de uma impressão.
+
+  C_{impressão} = \sum_{f} g_f \cdot \bar{c}_f + \frac{t_{min}}{60}\,(e_h + d_h
+  + o_h)
+
+     g_f = gramas reais de cada filamento (modelo + suporte + purga); c_f = custo médio
+    por grama no momento da conclusão.
+
+                                                                                                                                                                                                                                          Page 26 of 87
+Wabee — Especificação do Sistema de Gestão
+
+     t_min = minutos reais de impressão. Se não informado, usa o estimado e marca
+    "tempo estimado".
+    Trabalho não entra aqui: é lançado por saída no pós-processamento (RN-09).
+RN-08 — Rateio entre saídas da mesma mesa.
+
+  s_i = \frac{w_i \cdot q_i^{plan}}{\sum_j w_j \cdot q_j^{plan}}
+
+     w_i = peso estimado por unidade da saída i. Sem peso informado, rateia por
+    quantidade.
+    Material e operacional são rateados por s_i . Se o usuário informar gramas reais por
+    saída e filamento (mesa multicor), o material usa os gramas diretos.
+    A última saída recebe a diferença de arredondamento, para que a soma dos rateios seja
+    exatamente o custo da impressão.
+RN-09 — Peças boas, falhas e acabamento.
+
+  u_i = \frac{C_i}{q_i^{plan}}, \qquad custo_{bom} = q_i^{good} \cdot u_i,
+  \qquad custo_{falha} = q_i^{failed} \cdot u_i
+
+    O custo das unidades com falha vai para "Custo de falhas" (despesa de produção do
+    mês), com motivo.
+    Impressão com falha total ( FALHOU ): todo o material e operacional consumidos vão
+    para custo de falhas; nenhuma peça entra no estoque.
+    Se Settings.absorb_scrap_cost = True , o custo das falhas é absorvido pelas peças
+    boas: u_i = C_i ÷ q_good .
+    Componentes (argola, ímã) são consumidos só para as unidades boas, na montagem, e
+    somados à camada material.
+    Trabalho do pós-processamento: minutos ÷ 60 × taxa de trabalho , dividido pelas
+    unidades boas da saída, na camada trabalho.
+RN-10 — Liberação para o estoque. Cada saída tem status AGUARDANDO_ACABAMENTO ou
+ LIBERADA . As peças aprovadas só entram no estoque de produto pronto
+( PRODUCTION_OUTPUT ) na liberação, já com material, operacional, componentes e trabalho.
+Antes disso, aparecem como "em produção" no dashboard. Saídas sem pós-
+processamento na ficha são liberadas automaticamente na conclusão da impressão.
+
+5.4 Vendas e margens
+
+RN-11 — CMV. Na entrega, cada unidade sai pelo custo médio por camada do produto
+pronto naquele momento. O snapshot fica na linha do pedido e na movimentação.
+RN-12 — Taxas e despesas de venda.
+
+                                                                                                                                                                                                                                          Page 27 of 87
+Wabee — Especificação do Sistema de Gestão
+
+    Taxa do canal = fee_pct × (subtotal − desconto) + fee_fixed por pedido. A base
+    e o fixo por unidade são configuráveis no canal, porque cada marketplace cobra
+    diferente.
+    Taxa de pagamento = payment_fee_pct × valor recebido , calculada na baixa do
+    recebimento.
+    Embalagem = soma das embalagens baixadas × custo médio.
+    Imposto = sales_tax_pct × receita bruta , quando o regime exigir. No MEI, o DAS é
+    despesa fixa mensal, não percentual.
+RN-13 — Margem de contribuição realizada.
+
+  MC = R_{líquida} - CMV - taxa_{canal} - taxa_{pagamento} - embalagem -
+  frete_{pago} - impostos
+
+     R_líquida = subtotal − desconto + frete cobrado.
+    O seletor de camada recalcula a MC usando só o CMV da camada escolhida: "direto"
+    (material), "direto + operacional" ou "completo" (com trabalho).
+RN-14 — Receita e margem potencial. Para cada variação com saldo livre:
+
+  RP = \sum q^{livre} \cdot p^{ref}, \qquad MP = RP - \sum q^{livre} \cdot
+  \bar{c} - taxas_{est} - embalagem_{est} - impostos_{est}
+
+     p_ref = preço do canal padrão vigente ( ChannelPrice ), ou reference_price da
+    variação.
+    Unidades reservadas usam o preço do pedido e aparecem como "margem
+    comprometida", nunca somadas à potencial.
+    Peças em produção aparecem separadas, com custo acumulado e potencial.
+RN-15 — Margem por hora de máquina.
+
+  MHM = \frac{MC_{unitária}}{t_{plate} / (60 \cdot n_{plate})}
+
+Usa o tempo médio real das últimas 5 impressões da variação; sem histórico, usa a ficha
+técnica.
+RN-16 — Taxa de falha. Em valor: custo de falhas ÷ (custo de falhas + custo das peças
+boas) no período. Em unidades: unidades com falha ÷ unidades planejadas.
+RN-17 — Preço sugerido.
+
+  p = \frac{c_{total} + embalagem + taxa_{fixa}}{1 - taxa_{canal} - taxa_{pag}
+  - imposto - margem_{alvo}}
+
+                                                                                                                                                                                                                                          Page 28 of 87
+Wabee — Especificação do Sistema de Gestão
+
+Se o denominador for menor ou igual a zero, o sistema mostra "margem alvo impossível
+com essas taxas".
+
+5.5 Estoque, reservas e correções
+
+RN-18 — Reservas. Reserva ≤ saldo livre; reserva parcial é permitida. Saída de impressão
+vinculada a uma encomenda reserva automaticamente na liberação. Cancelar pedido
+libera as reservas.
+RN-20 — Saldo negativo. Bloqueado por padrão. A mensagem mostra o saldo livre. Só o
+dono pode habilitar exceção nas configurações.
+RN-21 — Estornos. O estorno usa o custo unitário do movimento original. Estornar uma
+impressão estorna todos os seus movimentos numa transação; é bloqueado se alguma
+peça dela já foi entregue (estorne a venda antes). Cada movimento só pode ser estornado
+uma vez.
+RN-29 — Cobertura de estoque. Dias de cobertura = saldo ÷ consumo médio diário dos
+últimos 30 dias. Abaixo de coverage_alert_days ou de min_qty , gera alerta.
+
+5.6 Financeiro
+
+RN-19 — Pagamento pelo dono. Parcela paga com payer = DONO não gera saída de caixa
+da empresa. Gera um OwnerMovement do tipo definido na compra: aporte de capital
+(padrão), empréstimo do dono ou despesa a reembolsar. Pagamento feito com conta ou
+cartão de propriedade do dono força payer = DONO .
+
+  Investimento_{dono} = \sum mov_{dono \to empresa} - \sum mov_{empresa \to
+  dono}
+
+RN-22 — Fechamento de mês. Mês fechado não aceita operação com data dentro dele.
+Correções entram no mês aberto com referência ao original. Reabrir é permitido só ao
+dono e fica auditado.
+RN-23 — Conciliação de energia. Energia estimada do mês = soma de horas × e_h .
+Energia real = parcela da conta atribuída à empresa (percentual ou kWh medido). O
+sistema mostra a diferença e sugere e_h = real ÷ horas . Com taxa combinada (sem
+divisão), a conciliação mostra aviso de que não é possível separar.
+RN-24 — Valor contábil do equipamento. Depreciação acumulada = horas usadas × d_h
+vigente em cada período. Valor contábil = custo de aquisição − depreciação acumulada.
+RN-25 — Arredondamento. Cálculo interno em Decimal com 6 casas. Campos money
+arredondados com ROUND_HALF_UP só ao gravar. Em qualquer divisão de valor (parcelas,
+rateios), os centavos restantes vão para o último elemento.
+
+                                                                                                                                                                                                                                          Page 29 of 87
+Wabee — Especificação do Sistema de Gestão
+
+RN-26 — Competência e caixa.
+
+Evento        Entra no resultado (DRE) quando Entra no caixa quando
+
+Compra de     Não entra; vira estoque e entra  Na data de pagamento de cada
+material      como custo no consumo/venda      parcela paga pela empresa
+
+Compra de     Não entra; entra como            Idem
+equipamento   depreciação por hora de uso
+
+Juros de      No mês de vencimento da parcela Idem
+parcelamento
+
+Venda         Na entrega (receita, CMV, taxas) No recebimento
+
+Falha de impressão Na data da conclusão        Não gera caixa
+
+Conta de luz  No mês de referência (parte da   No pagamento
+              empresa)
+
+Movimento do  Nunca, exceto pró-labore, que é  Só quando passa por conta da
+dono          despesa operacional (categoria   empresa
+              4.8)
+
+RN-27 — Recuperação do investimento. Retorno acumulado = resultado operacional
+acumulado do DRE desde o início. Percentual recuperado = retorno acumulado ÷
+investimento líquido do dono. Previsão de meses restantes = saldo a recuperar ÷ média do
+resultado dos últimos 3 meses (exibida só com 3 meses de histórico).
+
+RN-28 — Numeração. Documentos usam sequência anual por tipo ( CMP-2026-0001 , IMP-
+2026-0001 , PED-2026-0001 ) gerada numa tabela Sequence com select_for_update .
+
+RN-30 — Datas retroativas. Permitidas dentro de meses abertos. O custo médio usado é
+o do momento do registro, não o histórico; o relatório de estoque por data recalcula a
+partir do razão.
+
+6. Módulo 0 — Fundação
+
+A fundação entrega o projeto rodando, login, configurações, auditoria, layout e os
+utilitários que todos os outros módulos usam. Nada de negócio funciona sem ela, então é
+a primeira fase.
+
+US-0.1 — Projeto base e ambiente · P1
+
+Como dev, quero um projeto padronizado e reproduzível para que qualquer pessoa suba o
+sistema com um comando.
+
+                                                                     Page 30 of 87
+Wabee — Especificação do Sistema de Gestão
+
+Critérios de aceite:
+    Dado o repositório clonado, quando rodo docker compose up , então web e
+    PostgreSQL sobem e a tela de login responde em localhost:8000 .
+    Dado um push na branch principal, quando o CI roda, então executa ruff, mypy,
+    migrações e pytest, e falha se algum falhar.
+    Dado o ambiente de produção, quando ocorre uma exceção, então ela aparece no
+    Sentry com usuário e URL.
+
+Notas técnicas:
+    Configuração por variáveis de ambiente ( django-environ ): DATABASE_URL ,
+     SECRET_KEY , DEBUG , ALLOWED_HOSTS , SENTRY_DSN , BACKUP_* .
+     LANGUAGE_CODE = "pt-br" , TIME_ZONE = "America/Sao_Paulo" , USE_TZ = True ,
+     USE_THOUSAND_SEPARATOR = True .
+    Estrutura: config/ (settings, urls), apps/<app>/ , templates/ , static/ , tests/ .
+    Extensão PostgreSQL btree_gist criada em migração inicial (usada por CostRate ).
+
+US-0.2 — Login e sessão · P1
+
+Como dono, quero entrar com e-mail e senha para que só pessoas autorizadas vejam os
+dados da Wabee.
+Critérios de aceite:
+
+    Dado um usuário não autenticado, quando acessa qualquer página, então é
+    redirecionado ao login.
+    Dado 5 tentativas erradas em 15 minutos, quando tenta de novo, então o login fica
+    bloqueado por 15 minutos.
+    Dado um usuário logado, quando fica 14 dias sem acessar, então a sessão expira.
+    Dado a tela de perfil, quando o usuário troca a senha, então a senha atual é exigida e as
+    outras sessões são encerradas.
+Notas técnicas: autenticação padrão do Django com e-mail como login; django-axes para
+bloqueio; recuperação de senha por e-mail (P2).
+
+US-0.3 — Perfis e permissões · P2
+
+Como dono, quero dar acesso restrito a um ajudante para que ele registre produção sem
+ver valores financeiros.
+Critérios de aceite:
+
+    Dado um usuário do grupo Produção, quando abre telas de impressão e estoque, então
+    vê quantidades e não vê custos, preços nem menus de financeiro.
+
+                                                                                                                                                                                                                                          Page 31 of 87
+Wabee — Especificação do Sistema de Gestão
+
+    Dado um usuário do grupo Leitura, quando tenta salvar qualquer formulário, então
+    recebe erro 403.
+    Dado o dono, quando cria um usuário, então escolhe um dos grupos: Dono, Produção,
+    Leitura.
+Notas técnicas: grupos e permissões do Django criados por migração de dados; template
+tag {% if perms.finance.view_costs %} ; os serviços também checam permissão (não
+confiar só na tela).
+
+US-0.4 — Configurações da empresa · P1
+
+Como dono, quero definir parâmetros gerais para que os cálculos sigam as regras da
+Wabee.
+Critérios de aceite:
+
+    Dado a tela Configurações, quando salvo, então os campos de Settings (seção 4.1)
+    ficam disponíveis via get_settings() em todo o sistema.
+    Dado que altero absorb_scrap_cost ou o canal padrão, quando salvo, então a
+    alteração vale só para operações futuras e é registrada na auditoria.
+    Dado o primeiro acesso, quando não existe Settings , então um assistente de
+    configuração inicial abre (US-0.11).
+Notas técnicas: model singleton com cache em memória invalidado no save() .
+
+US-0.5 — Auditoria · P1
+
+Como dono, quero saber quem fez o quê e quando para confiar nos números e achar
+erros.
+Critérios de aceite:
+
+    Dado qualquer criação, alteração, cancelamento ou estorno, quando a operação é
+    concluída, então um AuditLog registra usuário, data, objeto e mudanças.
+    Dado a ficha de qualquer documento (compra, impressão, pedido), quando abro a aba
+    Histórico, então vejo a linha do tempo de auditoria dele.
+    Dado a tela Auditoria, quando filtro por usuário, período ou tipo, então vejo os registros
+    correspondentes.
+Notas técnicas: serviços chamam audit.log(...) explicitamente dentro da transação;
+cadastros simples usam um mixin de save() que calcula o diff.
+
+                                                                                                                                                                                                                                          Page 32 of 87
+Wabee — Especificação do Sistema de Gestão
+
+US-0.6 — Anexos · P2
+
+Como dono, quero anexar nota, comprovante, foto ou arquivo 3D a qualquer documento
+para ter tudo num lugar só.
+Critérios de aceite:
+
+    Dado uma compra, impressão, pedido, produto ou parcela, quando anexo um arquivo
+    de até 25 MB, então ele aparece na aba Anexos com tipo e descrição.
+    Dado um anexo, quando clico, então abro ou baixo o arquivo; somente usuários com
+    acesso ao documento conseguem.
+Notas técnicas: armazenamento em disco local no MVP, S3 compatível em produção
+( django-storages ); URLs assinadas.
+
+US-0.7 — Layout e navegação · P1
+
+Como dono, quero um menu simples que funcione no celular para registrar uma
+impressão ou venda na hora em que acontece.
+Critérios de aceite:
+
+    Dado a tela em computador, quando navego, então vejo menu lateral com: Visão geral,
+    Estoque, Produtos, Produção, Vendas, Compras, Financeiro, Configurações.
+    Dado a tela em celular (até 640 px), quando navego, então vejo barra inferior com Visão
+    geral, Produção, Vendas, Estoque e um botão "+".
+    Dado o botão "+", quando toco, então vejo atalhos: Nova impressão, Finalizar
+    impressão, Nova venda, Nova compra, Ajuste de estoque, Pagar parcela.
+    Dado qualquer operação concluída, quando a tela recarrega, então uma mensagem
+    confirma o que foi feito e oferece "Desfazer" por 10 segundos quando a operação
+    permite estorno.
+
+US-0.8 — Utilitários de domínio · P1
+
+Como dev, quero utilitários prontos para que dinheiro, quantidade e numeração sejam
+tratados igual em todo lugar.
+Critérios de aceite:
+
+    Dado o texto "1.234,56", quando passa pelo parser de moeda, então vira
+     Decimal("1234.56") ; "1234.56" também é aceito.
+    Dado um Decimal , quando formatado, então aparece "R$ 1.234,56" ou "1.234,5 g"
+    conforme a unidade.
+    Dado split_amount(Decimal("5646.19"), 18) , quando executo, então recebo 17
+    valores de 313,68 e o último de 313,63 (RN-25).
+
+                                                                                                                                                                                                                                          Page 33 of 87
+Wabee — Especificação do Sistema de Gestão
+
+    Dado duas requisições simultâneas pedindo número de pedido, quando processadas,
+    então recebem números diferentes e consecutivos (RN-28).
+    Dado o mesmo idempotency_key enviado duas vezes, quando o serviço processa,
+    então a segunda chamada devolve o resultado da primeira sem gravar nada.
+Notas técnicas: core/money.py , core/quantities.py , core/sequences.py ,
+ core/enums.py , core/idempotency.py , BaseModel abstrato; testes com hypothesis
+para split_amount (soma sempre igual ao total).
+
+US-0.9 — Busca global · P3
+
+Como dono, quero buscar por nome, SKU ou código para achar qualquer item, pedido ou
+impressão rápido.
+Critério de aceite: dado o campo de busca no topo, quando digito 3 ou mais caracteres,
+então vejo até 10 resultados agrupados por tipo, com link.
+Notas técnicas: SearchVector do PostgreSQL sobre nome, SKU, código e nome do
+cliente.
+
+US-0.10 — Exportação completa · P2
+
+Como dono, quero baixar todos os meus dados para ter uma cópia fora do sistema e
+entregar ao contador.
+Critério de aceite: dado o botão "Exportar tudo" em Configurações, quando clico, então
+recebo um ZIP com um CSV por tabela de negócio, em UTF-8 com separador ";" e decimal
+",".
+
+US-0.11 — Assistente de configuração inicial · P1
+
+Como dono, quero um passo a passo no primeiro acesso para começar a usar sem ler
+manual.
+Critérios de aceite:
+
+    Dado o primeiro login, quando o assistente abre, então ele pede em sequência: dados
+    da empresa, contas financeiras, impressora, taxa operacional, filamentos em estoque,
+    componentes em estoque, compras já feitas e canais de venda.
+    Dado qualquer passo, quando clico "Pular", então avanço e o passo aparece como
+    pendência na Visão geral.
+    Dado o fim do assistente, quando concluo, então a Visão geral mostra os saldos iniciais
+    e as parcelas futuras corretas.
+Notas técnicas: o assistente só chama os serviços normais de cada módulo (não grava
+nada por fora); progresso salvo em Settings.onboarding_state (JSON).
+
+                                                                                                                                                                                                                                          Page 34 of 87
+Wabee — Especificação do Sistema de Gestão
+
+7. Módulo 1 — Itens e estoque
+
+Este módulo cria o cadastro de itens e o razão de estoque, que todos os outros módulos
+usam para dar entrada e baixa. O coração dele é um único serviço,
+ inventory.services.post_movement() , e nenhum outro código cria StockMovement .
+
+7.1 Serviço central
+
+  def post_movement(
+          *, item: Item, type: MovementType, qty: Decimal,
+          unit_cost: LayeredCost | None = None, # obrigatório em entradas; saídas
+
+  usam o médio
+          lot: StockLot | None = None,
+          occurred_at: datetime, source: Model | None = None,
+          reason: str = "", user: User, idempotency_key: UUID | None = None,
+
+  ) -> StockMovement:
+          """RN-01, RN-20, RN-21. Deve ser chamado dentro de
+
+  transaction.atomic()."""
+
+Passos internos, nesta ordem:
+ 1. Validar tipo × sinal × tipo de item (tabela 4.3.1) e motivo obrigatório.
+ 2. Travar StockBalance do item ( select_for_update ) e, se houver, o StockLot .
+ 3. Saída: verificar saldo livre (RN-20); custo = custo médio atual por camada.
+ 4. Entrada: recalcular custo médio por camada (RN-01).
+ 5. Atualizar qty_remaining do lote; mudar status para ESGOTADO se chegar a zero.
+ 6. Gravar StockMovement com qty_after e avg_cost_after ; atualizar StockBalance .
+ 7. Registrar auditoria.
+
+US-1.1 — Cadastrar item · P1
+
+Como dono, quero cadastrar componentes, embalagens, consumíveis e ferramentas para
+controlar tudo que entra e sai.
+Critérios de aceite:
+
+    Dado o formulário Novo item, quando escolho o tipo, então os campos mudam:
+    filamento mostra a ficha de filamento; ferramenta mostra condição; produto pronto
+    não aparece (é criado pela variação).
+    Dado nome e tipo preenchidos, quando salvo, então o SKU é gerado no padrão
+     <PREFIXO>-<ABREV>-<NNN> e pode ser editado antes de salvar.
+    Dado um item com movimentações, quando tento mudar o tipo ou a unidade, então o
+    sistema bloqueia.
+
+                                                                                                                                                                                                                                          Page 35 of 87
+Wabee — Especificação do Sistema de Gestão
+
+    Dado um item, quando clico Desativar, então ele some das listas de seleção mas
+    continua nos relatórios e no histórico.
+
+US-1.2 — Cadastrar filamento · P1
+
+Como dono, quero cadastrar cada filamento com material, marca e cor para saber
+exatamente o que tenho e quanto custa por grama.
+Critérios de aceite:
+
+    Dado o tipo Filamento, quando preencho material, marca e cor, então o nome é
+    sugerido ("PLA preto — Marca X") e a densidade é preenchida com o valor típico do
+    material, editável.
+    Dado o seletor de cor, quando escolho, então o hex aparece como bolinha de cor em
+    todas as listas.
+    Dado o mesmo material, marca e cor já cadastrados, quando tento salvar, então o
+    sistema avisa duplicidade e sugere o existente.
+
+US-1.3 — Saldo inicial · P1
+
+Como dono, quero informar o que já tenho hoje para começar o controle com o estoque
+real.
+Critérios de aceite:
+
+    Dado um filamento, quando informo carretéis existentes (gramas restantes de cada um
+    e custo por grama), então cada carretel vira um StockLot e uma movimentação
+     OPENING .
+    Dado que não sei o custo exato, quando deixo em branco, então o sistema usa a
+    referência de R$ 100 por kg (R$ 0,10 por grama) e marca "custo de referência".
+    Dado componentes e embalagens, quando informo quantidade e custo unitário, então
+    gera OPENING .
+    Dado um item que já tem OPENING , quando tento lançar outro, então o sistema orienta
+    a usar ajuste de inventário.
+    Dado o saldo inicial vinculado a uma compra inicial (US-3.6), quando a compra é
+    registrada, então o custo vem da compra e não da referência.
+
+US-1.4 — Posição de estoque · P1
+
+Como dono, quero ver quanto tenho de cada coisa para saber o que comprar e o que
+vender.
+Critérios de aceite:
+
+                                                                                                                                                                                                                                          Page 36 of 87
+Wabee — Especificação do Sistema de Gestão
+
+    Dado a tela Estoque, quando abro, então vejo abas por tipo (Filamentos, Componentes,
+    Embalagens, Consumíveis, Ferramentas, Produtos prontos).
+    Dado a aba Filamentos, então cada linha mostra cor, material, saldo em gramas,
+    carretéis abertos/fechados, custo médio por kg, valor em estoque e dias de cobertura
+    (RN-29).
+    Dado a aba Produtos prontos, então cada linha mostra saldo, reservado, livre, custo
+    médio por camada, preço de referência e margem potencial unitária.
+    Dado qualquer aba, quando filtro "abaixo do mínimo", então só aparecem itens em
+    alerta, ordenados pelos menores dias de cobertura.
+    Dado o rodapé, então vejo o valor total da aba e o botão Exportar (CSV/XLSX).
+
+US-1.5 — Extrato do item (kardex) · P1
+
+Como dono, quero ver todas as entradas e saídas de um item para entender por que o
+saldo está assim.
+Critérios de aceite:
+
+    Dado a ficha de um item, quando abro a aba Movimentações, então vejo data, tipo,
+    quantidade, custo unitário, saldo após, custo médio após, origem (com link) e usuário,
+    do mais recente para o mais antigo.
+    Dado um período, quando filtro, então vejo saldo inicial do período, entradas, saídas e
+    saldo final.
+    Dado o comando rebuild_balances , quando rodado, então o saldo calculado pelo
+    extrato bate com o StockBalance (teste automatizado obrigatório).
+
+US-1.6 — Carretéis · P1
+
+Como dono, quero saber qual carretel está aberto e quanto resta nele para não começar
+uma impressão sem filamento suficiente.
+Critérios de aceite:
+
+    Dado um filamento com carretéis, quando consumo na produção sem escolher
+    carretel, então o sistema baixa do carretel ABERTO e, se acabar, abre o FECHADO mais
+    antigo (FIFO físico).
+    Dado um consumo maior que o restante do carretel aberto, quando processado, então
+    o consumo é dividido em duas movimentações, uma por carretel.
+    Dado a ficha do filamento, então vejo cada carretel com código, status, gramas
+    restantes, barra de percentual e data de abertura.
+    Dado um carretel, quando marco "Descartar resto" (ex.: umidade), então o restante sai
+    como LOSS com motivo.
+
+                                                                                                                                                                                                                                          Page 37 of 87
+Wabee — Especificação do Sistema de Gestão
+
+US-1.7 — Pesagem de carretel · P2
+
+Como dono, quero pesar o carretel na balança e informar o peso para corrigir o saldo com
+precisão.
+Critérios de aceite:
+
+    Dado um carretel, quando informo o peso bruto em gramas, então o sistema calcula
+     restante = peso bruto − tara do carretel vazio e mostra a diferença para o
+    saldo do sistema.
+    Dado a diferença, quando confirmo, então gera ADJUSTMENT_IN ou ADJUSTMENT_OUT
+    com motivo "pesagem".
+    Dado uma diferença maior que 10% do saldo, quando confirmo, então o sistema pede
+    confirmação extra.
+
+US-1.8 — Inventário (contagem) · P2
+
+Como dono, quero fazer uma contagem geral de tempos em tempos para manter o
+estoque do sistema igual ao real.
+Critérios de aceite:
+
+    Dado Novo inventário, quando escolho os tipos, então o sistema cria uma folha de
+    contagem com o saldo do sistema congelado naquele momento.
+    Dado a folha, quando informo as quantidades contadas (ou pesos, no filamento), então
+    vejo a diferença por item em quantidade e em reais.
+    Dado Concluir inventário, quando confirmo, então todas as diferenças viram ajustes
+    numa única transação e o resumo vai para "Ajustes de estoque" no DRE.
+    Dado movimentações feitas durante a contagem, quando concluo, então o sistema
+    avisa quais itens mudaram desde a abertura.
+
+US-1.9 — Saídas avulsas · P1
+
+Como dono, quero registrar perda, brinde, amostra ou uso pessoal para que nada saia do
+estoque sem explicação.
+Critérios de aceite:
+
+    Dado a tela Saída avulsa, quando escolho item, quantidade e motivo ( LOSS , GIFT ,
+     SAMPLE , PERSONAL_USE ), então a saída é gravada pelo custo médio e o texto do motivo
+    é obrigatório.
+    Dado PERSONAL_USE , quando confirmo, então também gera um OwnerMovement do tipo
+     GOODS_WITHDRAWAL (retirada em bens).
+
+                                                                                                                                                                                                                                          Page 38 of 87
+Wabee — Especificação do Sistema de Gestão
+
+    Dado GIFT ou SAMPLE , quando confirmo, então o custo vai para a categoria Marketing
+    no DRE.
+
+US-1.10 — Alertas de estoque · P2
+
+Como dono, quero ser avisado quando algo está acabando para comprar a tempo.
+Critérios de aceite:
+
+    Dado um item com saldo abaixo de min_qty ou cobertura abaixo de
+     coverage_alert_days , quando abro a Visão geral, então ele aparece no bloco de
+    alertas com a quantidade sugerida de recompra.
+    Dado a lista de alertas, quando clico "Criar compra", então abre um rascunho de
+    compra com esses itens, agrupados pelo fornecedor padrão.
+
+US-1.11 — Ferramentas · P2
+
+Como dono, quero saber quais ferramentas tenho, onde estão e em que estado para repor
+o que quebrou.
+Critérios de aceite:
+
+    Dado a aba Ferramentas, então vejo nome, quantidade, local, condição e valor de
+    aquisição (informativo).
+    Dado uma ferramenta, quando mudo a condição para QUEBRADA ou PERDIDA , então
+    registra saída LOSS da unidade e sugere recompra.
+    Dado o valor das ferramentas, então ele nunca entra no custo das peças (decisão:
+    ferramentas pequenas são despesa na compra, ver seção 19 se quiser depreciar).
+
+US-1.12 — Estorno de movimentação · P1
+
+Como dono, quero desfazer uma movimentação errada para corrigir sem apagar o
+histórico.
+Critérios de aceite:
+
+    Dado uma movimentação avulsa (ajuste, perda, brinde), quando clico Estornar e
+    informo motivo, então é criada a movimentação inversa com o mesmo custo (RN-21).
+    Dado uma movimentação gerada por documento (compra, impressão, venda), quando
+    tento estornar pelo extrato, então o sistema orienta a estornar o documento de origem.
+    Dado uma movimentação já estornada, então o botão Estornar não aparece.
+
+                                                                                                                                                                                                                                          Page 39 of 87
+Wabee — Especificação do Sistema de Gestão
+
+US-1.13 — Etiquetas com QR code · P3
+
+Como dono, quero imprimir etiquetas para carretéis e caixas para identificar e abrir a
+ficha pelo celular.
+Critério de aceite: dado um carretel ou item, quando clico Etiqueta, então gero PDF 50×30
+mm com nome, código, cor e QR que abre a ficha no sistema.
+Notas técnicas: qrcode + reportlab ; rota /q/<lot_code> que redireciona para a ficha.
+
+8. Módulo 2 — Equipamentos e taxas de custo
+
+Este módulo guarda as impressoras e as taxas por hora que transformam tempo de
+máquina em custo. A Wabee começa com a taxa combinada de R$ 1,20 por hora e poderá
+dividi-la em energia e depreciação sem perder o histórico.
+
+8.1 Serviço central
+
+@dataclass(frozen=True)
+
+class RateSet:
+
+energy_h: Decimal        # RN-04
+
+depreciation_h: Decimal # RN-05
+
+operational_h: Decimal   # taxa combinada, quando não separada (RN-06)
+
+labor_h: Decimal
+
+mode: Literal["SPLIT", "COMBINED", "MISSING"]
+
+rate_ids: tuple[int, ...] # para auditoria
+
+def get_rates(equipment: Equipment, on: date) -> RateSet: ...
+
+get_rates aplica a ordem da RN-06, considera vigência na data e devolve zero com mode
+= "MISSING" quando não há taxa. Testes cobrem: só global, só equipamento, os dois,
+mudança de vigência no meio do mês, equipamento totalmente depreciado.
+
+US-2.1 — Cadastrar equipamento · P1
+
+Como dono, quero cadastrar minha impressora com valor, vida útil e consumo para que o
+custo de uso dela entre nas peças.
+
+Critérios de aceite:
+
+    Dado o formulário de equipamento, quando salvo, então os campos de 4.4 são gravados
+    e o equipamento aparece na seleção de impressoras da produção (só kind = PRINTER
+    e status = ATIVO ).
+
+                                                               Page 40 of 87
+Wabee — Especificação do Sistema de Gestão
+
+    Dado um equipamento vindo de uma compra (US-3.5), quando a compra é recebida,
+    então o cadastro é criado com valor de aquisição = custo da linha com frete rateado,
+    sem juros.
+    Dado horas de uso anteriores ao sistema, quando informo initial_hours , então o
+    horímetro começa desse valor.
+    Dado a ficha do equipamento, então vejo: horas usadas, depreciação acumulada, valor
+    contábil, horas desde a última manutenção, taxas vigentes e gráfico de horas por mês.
+
+US-2.2 — Taxas com vigência · P1
+
+Como dono, quero cadastrar e atualizar as taxas por hora para que mudanças de tarifa
+não alterem o custo de peças já feitas.
+Critérios de aceite:
+
+    Dado a tela Taxas, quando cadastro OPERATIONAL_PER_HOUR = 1,20 com início em uma
+    data, então todas as impressões a partir dessa data usam R$ 1,20 por hora.
+    Dado uma taxa vigente, quando cadastro um novo valor do mesmo tipo com nova data
+    de início, então o sistema encerra a anterior no dia anterior automaticamente.
+    Dado duas taxas do mesmo tipo e escopo com períodos sobrepostos, quando tento
+    salvar, então o banco recusa (constraint de exclusão) e a tela explica o conflito.
+    Dado uma taxa usada em impressões, quando tento editar o valor, então o sistema
+    bloqueia e orienta criar nova vigência.
+    Dado a tela, então vejo a linha do tempo das taxas de cada tipo, por equipamento e
+    global.
+
+US-2.3 — Calculadora de energia · P2
+
+Como dono, quero que o sistema calcule a energia por hora a partir da potência e da tarifa
+para não precisar fazer a conta.
+Critérios de aceite:
+
+    Dado a potência média (W) do equipamento e a tarifa (reais por kWh, com impostos e
+    bandeira), quando clico Calcular, então vejo e_h (RN-04) e posso salvar como taxa
+     ENERGY_PER_HOUR com source = CALCULATED .
+    Dado a tarifa cadastrada como ENERGY_PRICE_KWH global, quando a tarifa muda, então
+    o sistema sugere atualizar as taxas de energia de todos os equipamentos.
+    Dado a dica na tela, então ela recomenda medir com uma tomada medidora de energia,
+    porque a potência nominal da fonte é bem maior que o consumo médio real.
+
+                                                                                                                                                                                                                                          Page 41 of 87
+Wabee — Especificação do Sistema de Gestão
+
+US-2.4 — Calculadora de depreciação · P2
+
+Como dono, quero calcular a depreciação por hora para saber quanto cada hora de
+impressão gasta da máquina.
+Critério de aceite: dado custo de aquisição, valor residual e vida útil em horas, quando
+calculo, então vejo d_h (RN-05), a projeção "a máquina estará paga após X horas" e posso
+salvar como taxa.
+
+US-2.5 — Dividir a taxa combinada · P2
+
+Como dono, quero separar os R$ 1,20 em energia e depreciação para ver cada custo
+separado nos dashboards.
+Critérios de aceite:
+
+    Dado uma taxa combinada vigente, quando abro o assistente Dividir, então informo
+    energia (ou calculo pela US-2.3) e o sistema propõe depreciação = combinada −
+    energia, editável.
+    Dado a confirmação, quando salvo, então a combinada é encerrada no dia anterior e as
+    duas novas começam na data escolhida, numa transação.
+    Dado impressões anteriores à divisão, então continuam com camada "operacional não
+    separado"; o dashboard mostra o aviso "período com taxa combinada".
+
+US-2.6 — Horímetro · P1
+
+Como dono, quero que as horas de uso da impressora sejam somadas sozinhas para
+acompanhar desgaste e manutenção.
+Critérios de aceite:
+
+    Dado impressões CONCLUIDA ou FALHOU , então hours_used = initial_hours + Σ
+    actual_minutes ÷ 60 (falhas também desgastam a máquina).
+    Dado a ficha do equipamento, então vejo horas totais, horas no mês e taxa de ocupação
+    do mês (horas impressas ÷ horas do mês).
+
+US-2.7 — Manutenção · P2
+
+Como dono, quero registrar manutenções e ser lembrado das preventivas para evitar
+falhas de impressão.
+Critérios de aceite:
+
+    Dado Nova manutenção, quando informo tipo, data, custo e peças usadas, então peças
+    do estoque saem com MAINTENANCE_CONSUMPTION , o custo pago vira conta a pagar e o
+    horímetro de manutenção zera.
+
+                                                                                                                                                                                                                                          Page 42 of 87
+Wabee — Especificação do Sistema de Gestão
+
+    Dado maintenance_interval_hours , quando as horas desde a última manutenção
+    passam de 90% do intervalo, então aparece alerta na Visão geral.
+    Dado um período, então o relatório mostra custo de manutenção por equipamento e
+    por hora impressa.
+    Dado o status MANUTENCAO , então a impressora não aparece para novas impressões.
+
+US-2.8 — Taxa de trabalho · P2
+
+Como dono, quero definir quanto vale minha hora para ver se o preço das peças paga meu
+tempo.
+
+Critérios de aceite:
+    Dado LABOR_PER_HOUR cadastrada, então o pós-processamento calcula a camada
+    trabalho (RN-09).
+    Dado nenhuma taxa de trabalho, então a camada fica zero e o dashboard mostra
+    "trabalho não valorizado" junto da margem.
+
+US-2.9 — Baixa de equipamento · P3
+
+Como dono, quero registrar a venda ou descarte de um equipamento para encerrar a
+depreciação e apurar ganho ou perda.
+
+Critério de aceite: dado Baixar equipamento com data e valor de venda, quando confirmo,
+então o status vira BAIXADO , as taxas do equipamento são encerradas e a diferença entre
+valor de venda e valor contábil vai para o DRE como resultado não operacional.
+
+9. Módulo 3 — Compras, recebimento e contas a pagar
+
+Uma compra é registrada uma vez e gera dois efeitos independentes: as parcelas a pagar
+(na confirmação) e a entrada no estoque (no recebimento). Isso permite comprar hoje,
+pagar em 18 meses e receber o filamento na semana que vem, cada coisa na sua data.
+
+9.1 Serviços
+
+Serviço                                     O que faz                        Regras
+
+confirm_purchase(purchase)                  Valida linhas, calcula custo de  RN-02, RN-
+                                            aquisição por linha, cria        03, RN-25
+                                            Payable e Installment s,
+                                            muda status para CONFIRMADA
+
+                                                                             Page 43 of 87
+Wabee — Especificação do Sistema de Gestão
+
+Serviço                                     O que faz                        Regras
+
+receive_purchase(purchase, lines)           Cria lotes e movimentações       RN-01
+                                            PURCHASE_RECEIPT ; cria
+cancel_purchase(purchase, reason)           Equipment para linhas de
+                                            equipamento; atualiza
+suggest_first_due_date(account,             qty_received e status
+purchased_at)
+                                            Cancela parcelas abertas; exige  RN-21
+                                            estorno dos recebimentos
+                                            antes
+
+                                            Sugere o 1º vencimento pelo      —
+
+                                            fechamento e vencimento do
+
+                                            cartão
+
+Estados da compra: RASCUNHO → CONFIRMADA → RECEBIDA_PARCIAL → RECEBIDA ;
+CANCELADA a partir de rascunho ou confirmada sem recebimento.
+
+US-3.1 — Fornecedores · P1
+
+Como dono, quero cadastrar onde compro para comparar preços e repetir compras.
+
+Critérios de aceite:
+
+    Dado o formulário, quando informo só o nome, então o fornecedor é criado (demais
+    campos opcionais).
+    Dado a ficha do fornecedor, então vejo compras, total comprado no ano e itens
+    comprados com último preço.
+    Dado o campo de fornecedor na compra, quando digito um nome inexistente, então
+    posso criá-lo ali mesmo.
+
+US-3.2 — Registrar compra · P1
+
+Como dono, quero lançar uma compra com todos os itens para que custos e estoque
+fiquem corretos.
+
+Critérios de aceite:
+
+    Dado Nova compra, quando preencho fornecedor, data e linhas, então cada linha pode
+    ser: item de estoque (filamento, componente, embalagem, consumível, ferramenta),
+    equipamento ou despesa (categoria financeira).
+    Dado frete e desconto no cabeçalho, quando adiciono linhas, então o rateio aparece ao
+    vivo em cada linha e o custo unitário de aquisição é mostrado (RN-02).
+
+                                                                                    Page 44 of 87
+Wabee — Especificação do Sistema de Gestão
+
+    Dado um filamento, quando informo a quantidade, então posso digitar em carretéis
+    (ex.: 3 × 1 kg) e o sistema converte para gramas.
+    Dado um item que não existe, quando digito o nome na linha, então posso criá-lo num
+    modal sem sair da compra.
+    Dado o rascunho, quando salvo, então nada acontece no estoque nem no financeiro até
+    confirmar.
+
+US-3.3 — Pagamento e parcelas · P1
+
+Como dono, quero informar como paguei para que o sistema gere as parcelas com
+vencimento certo.
+Critérios de aceite:
+
+    Dado a forma de pagamento CREDITO_PARCELADO , quando informo cartão, número de
+    parcelas e total parcelado, então o sistema gera as parcelas pela RN-25 e sugere o 1º
+    vencimento pelo cartão.
+    Dado o valor à vista informado, quando o total parcelado é maior, então juros =
+    diferença, distribuídos por parcela (RN-03); quando não informado, compra fica
+    marcada "juros não informados".
+    Dado a prévia das parcelas, quando edito o valor de uma, então a última é recalculada e
+    a soma tem de bater com o total; senão, não confirma.
+    Dado PIX , DINHEIRO ou DEBITO , quando confirmo, então gera uma parcela única já
+    paga na data da compra.
+    Dado BOLETO , quando confirmo, então gera parcela(s) com o vencimento informado.
+
+US-3.4 — Quem pagou · P1
+
+Como dono, quero marcar que a compra foi paga com meu dinheiro ou cartão pessoal
+para separar o que é investimento meu do caixa da empresa.
+Critérios de aceite:
+
+    Dado uma conta ou cartão de propriedade DONO , quando selecionado, então payer =
+    DONO é preenchido e travado.
+    Dado payer = DONO , quando confirmo, então escolho o tratamento: aporte de capital
+    (padrão), empréstimo do dono ou despesa a reembolsar.
+    Dado cada parcela paga pelo dono, quando baixada, então nenhum lançamento de
+    caixa da empresa é criado e um OwnerMovement registra o valor (RN-19).
+    Dado a compra, então a tela mostra: total, já pago pelo dono, já pago pela empresa, a
+    pagar.
+
+                                                                                                                                                                                                                                          Page 45 of 87
+Wabee — Especificação do Sistema de Gestão
+
+US-3.5 — Receber compra · P1
+
+Como dono, quero dar entrada no que chegou para que o estoque reflita o que tenho na
+mão.
+Critérios de aceite:
+
+    Dado uma compra confirmada, quando clico Receber, então vejo as linhas com
+    quantidade pendente pré-preenchida e posso receber tudo ou parte.
+    Dado linhas de filamento, quando recebo N carretéis, então são criados N StockLot
+    com códigos sequenciais e N movimentações.
+    Dado uma linha de equipamento, quando recebo, então o cadastro do equipamento
+    abre pré-preenchido (nome, valor, data) para completar vida útil e potência.
+    Dado uma linha de despesa, então ela não passa por recebimento.
+    Dado recebimento parcial, então o status vira RECEBIDA_PARCIAL e a compra aparece
+    em "pendências de recebimento".
+    Dado o atalho "Confirmar e receber", quando a compra chega junto, então os dois
+    serviços rodam numa única transação.
+
+US-3.6 — Compras feitas antes do sistema · P1
+
+Como dono, quero lançar as compras que já fiz (R$ 8.509,30) para que parcelas, estoque e
+meu investimento comecem corretos.
+Critérios de aceite:
+
+    Dado o assistente inicial ou Nova compra com "Compra anterior ao sistema", quando
+    registro a compra de R$ 5.646,19 em 18x e a de R$ 2.863,11 em 12x, então as 30 parcelas
+    são geradas com payer = DONO .
+    Dado parcelas que já venceram e foram pagas, quando informo quantas já paguei,
+    então elas são baixadas com a data de cada vencimento, gerando os OwnerMovement
+    correspondentes.
+    Dado as linhas da compra, quando detalho impressora, filamentos e ferramentas, então
+    o recebimento gera equipamento e estoque; o consumo já ocorrido antes do sistema é
+    tratado pelo saldo inicial (US-1.3).
+    Dado que não sei dividir o valor exato entre os itens, quando informo os valores
+    aproximados, então a soma tem de bater com o total e a compra fica marcada "valores
+    rateados manualmente".
+    Dado as compras iniciais, então o painel Investimento do dono mostra: total
+    comprometido R$ 8.509,30, pago até hoje e a pagar por mês.
+
+                                                                                                                                                                                                                                          Page 46 of 87
+Wabee — Especificação do Sistema de Gestão
+
+US-3.7 — Lista de compras · P1
+
+Como dono, quero ver todas as compras e o que falta para acompanhar entregas e
+pagamentos.
+Critérios de aceite:
+
+    Dado a lista, então vejo número, data, fornecedor, total, status, pagador, parcelas
+    pagas/total e próximo vencimento.
+    Dado filtros, quando seleciono período, fornecedor, status ou pagador, então a lista e o
+    total do rodapé são filtrados.
+
+US-3.8 — Cancelar compra · P2
+
+Como dono, quero cancelar uma compra devolvida ou lançada errada para desfazer seus
+efeitos.
+Critérios de aceite:
+
+    Dado uma compra sem recebimento e sem parcela paga, quando cancelo com motivo,
+    então as parcelas são canceladas.
+    Dado uma compra com recebimento, quando tento cancelar, então o sistema lista os
+    recebimentos a estornar primeiro (bloqueado se o material já foi consumido).
+    Dado parcelas já pagas, quando cancelo, então o sistema cria uma conta a receber de
+    reembolso do fornecedor (ou do cartão) no valor pago.
+
+US-3.9 — Histórico de preços · P3
+
+Como dono, quero ver quanto paguei por item ao longo do tempo para saber onde
+comprar mais barato.
+Critério de aceite: dado a ficha de um item, quando abro Preços, então vejo um gráfico de
+custo de aquisição por compra e uma tabela por fornecedor com menor, médio e último
+preço.
+
+10. Módulo 4 — Produtos, variações e fichas técnicas
+
+O produto é o que se vende; a variação é o SKU com cor ou tamanho; a ficha técnica é a
+receita que permite prever custo e preço antes de imprimir. A ficha é versionada para que
+uma mudança de receita nunca altere o custo de peças já produzidas.
+
+                                                                                                                                                                                                                                          Page 47 of 87
+Wabee — Especificação do Sistema de Gestão
+
+10.1 Serviços
+
+@dataclass(frozen=True)
+
+class CostBreakdown:
+
+material: Decimal                           # filamentos + componentes (sem embalagem)
+
+energy: Decimal
+
+depreciation: Decimal
+
+operational: Decimal                        # combinada, quando não separada
+
+labor: Decimal
+
+packaging: Decimal                          # informativo: entra como despesa de venda
+
+total_production: Decimal # material + energia + depreciação +
+
+operacional + trabalho
+
+machine_minutes: Decimal # por unidade
+
+def estimate_unit_cost(bom: BomVersion, on: date) -> CostBreakdown: ...
+def suggest_price(variant: ProductVariant, channel: SalesChannel, on: date) -
+> Decimal: ... # RN-17
+def activate_bom(bom: BomVersion) -> None: ... # arquiva a ativa anterior
+
+estimate_unit_cost usa custo médio atual de cada item, taxas vigentes na data (RN-
+06), est_print_minutes_per_plate ÷ units_per_plate e o desperdício waste_pct de
+cada linha.
+
+US-4.1 — Produto e variações · P1
+
+Como dono, quero cadastrar um produto com suas cores para vender e controlar cada
+versão separadamente.
+
+Critérios de aceite:
+
+    Dado Novo produto, quando informo nome, categoria, foto e uma lista de
+    cores/tamanhos, então uma variação é criada para cada uma, com SKU ( PRD-<SLUG>-
+    <VAR> ) e um item FINISHED_GOOD vinculado.
+    Dado uma variação, quando a desativo, então ela some de novas vendas e produções,
+    mas o estoque existente continua visível.
+    Dado o campo origem do modelo, quando marco TERCEIRO_LIVRE ou
+     TERCEIRO_LICENCIADO , então preencho a licença e um aviso aparece se a licença não
+    permitir uso comercial.
+
+US-4.2 — Ficha técnica · P1
+
+Como dono, quero montar a receita de cada variação para saber quanto material, tempo e
+componentes ela usa.
+Critérios de aceite:
+
+                                                                                        Page 48 of 87
+Wabee — Especificação do Sistema de Gestão
+
+    Dado a ficha, quando adiciono linhas, então cada linha tem item, tipo
+    ( FILAMENT_MODEL , FILAMENT_SUPPORT , FILAMENT_PURGE , COMPONENT , PACKAGING ,
+     CONSUMABLE ), quantidade por unidade, % de desperdício e momento de consumo.
+    Dado o tipo de linha, então o momento padrão é: filamentos na produção; componentes
+    na montagem; embalagens na entrega.
+    Dado unidades por mesa e minutos por mesa, então o sistema mostra minutos de
+    máquina por unidade.
+    Dado minutos de pós-processamento por unidade, então entram na camada trabalho
+    do custo estimado.
+    Dado que importei um G-code (Módulo 9), quando vinculo, então gramas e tempo são
+    preenchidos a partir dele.
+
+US-4.3 — Versões da ficha · P1
+
+Como dono, quero alterar a receita sem bagunçar o histórico para comparar custo antigo
+e novo.
+Critérios de aceite:
+
+    Dado uma ficha ATIVA , quando clico Editar, então é criada uma cópia RASCUNHO com
+    versão +1; a ativa continua valendo até eu ativar a nova.
+    Dado Ativar, quando confirmo, então a anterior vira ARQUIVADA e novas impressões
+    usam a nova.
+    Dado uma impressão, então ela guarda a versão de ficha usada
+    ( PrintJobOutput.bom_version ).
+    Dado duas versões, quando clico Comparar, então vejo lado a lado as linhas e o custo
+    estimado de cada uma.
+
+US-4.4 — Custo estimado por camada · P1
+
+Como dono, quero ver quanto custa produzir uma unidade, separado por tipo de custo
+para entender onde está o dinheiro.
+Critérios de aceite:
+
+    Dado a ficha, então um quadro mostra por unidade: material, energia, depreciação (ou
+    operacional combinado), trabalho, total de produção, e embalagem separada.
+    Dado o mesmo quadro, então há um alternador "por unidade / por mesa".
+    Dado uma alteração de linha na tela, quando mudo uma quantidade, então o quadro
+    recalcula sem salvar (HTMX).
+    Dado um item com custo de referência (sem compra real), então o valor aparece com a
+    marca "estimado".
+
+                                                                                                                                                                                                                                          Page 49 of 87
+Wabee — Especificação do Sistema de Gestão
+
+US-4.5 — Preços por canal e preço sugerido · P1
+
+Como dono, quero definir o preço de cada variação em cada canal para saber a margem
+real em cada lugar onde vendo.
+Critérios de aceite:
+
+    Dado a aba Preços, então cada canal ativo tem uma linha com: preço atual, taxas
+    estimadas, margem de contribuição unitária em reais e %, margem por hora de
+    máquina e preço sugerido (RN-17).
+    Dado que altero um preço, quando salvo, então é criada nova vigência em
+     ChannelPrice e a anterior é encerrada.
+    Dado margem unitária negativa em algum canal, então a linha fica destacada em
+    vermelho.
+    Dado o botão "Aplicar sugerido", quando clico, então o preço sugerido vira o novo preço
+    do canal.
+
+US-4.6 — Simulador "e se" · P2
+
+Como dono, quero testar cenários para decidir preço e compras sem mexer nos dados.
+Critérios de aceite:
+
+    Dado o simulador de uma variação, quando altero preço do filamento por kg, taxa por
+    hora, taxa do canal ou preço de venda, então vejo custo e margem recalculados ao lado
+    dos atuais.
+    Dado o simulador, então nada é gravado; um botão permite copiar o cenário como texto.
+
+US-4.7 — Indicadores reais do produto · P2
+
+Como dono, quero comparar o custo previsto com o que realmente aconteceu para
+corrigir as fichas.
+Critérios de aceite:
+
+    Dado a ficha do produto, então vejo para as últimas 10 produções: custo real médio por
+    unidade por camada, diferença para o estimado em %, taxa de falha e tempo real
+    médio.
+    Dado diferença maior que 15% entre real e estimado, então aparece a sugestão
+    "atualizar ficha" com os valores médios reais.
+    Dado o período selecionado, então vejo unidades vendidas, receita, margem realizada e
+    estoque atual.
+
+                                                                                                                                                                                                                                          Page 50 of 87
+Wabee — Especificação do Sistema de Gestão
+
+US-4.8 — Copiar ficha entre variações · P2
+
+Como dono, quero reaproveitar a ficha de uma cor em outra para não montar tudo de
+novo.
+Critério de aceite: dado uma ficha, quando escolho "Copiar para" outras variações e
+informo a troca de filamento (PLA amarelo → PLA azul), então as fichas destino recebem
+uma versão rascunho com as linhas copiadas e os filamentos trocados.
+
+US-4.9 — Encomenda personalizada · P2
+
+Como dono, quero vender uma peça sob medida que não está no catálogo para atender
+pedidos especiais com custo controlado.
+Critérios de aceite:
+
+    Dado um pedido de encomenda, quando adiciono linha "Personalizado", então informo
+    descrição e o sistema cria uma variação oculta do produto genérico "Personalizado"
+    com ficha própria.
+    Dado essa ficha, então posso estimar custo e preço antes de aceitar o pedido
+    (orçamento).
+
+US-4.10 — Kits · P3
+
+Como dono, quero vender um kit (ex.: 3 chaveiros) para baixar as peças certas do
+estoque.
+Critério de aceite: dado um produto do tipo kit com componentes que são outras
+variações, quando entrego o pedido, então cada variação componente sai do estoque e o
+CMV do kit é a soma delas.
+
+11. Módulo 5 — Produção e impressões
+
+A impressão (mesa) é o evento que consome tempo de máquina e filamento; suas saídas
+são as variações produzidas nela. Ao finalizar, o usuário informa só o que aconteceu
+(tempo, gramas, peças boas e falhas) e o sistema baixa material, calcula e rateia custos,
+registra falhas e coloca as peças em produção ou no estoque.
+
+11.1 Estados
+
+Documento  De  Para       Ação      Efeitos
+               PLANEJADA  Planejar
+PrintJob   —                        Nenhum efeito em estoque; mostra
+                                    materiais necessários
+
+                                    Page 51 of 87
+Wabee — Especificação do Sistema de Gestão
+
+Documento  De                               Para               Ação                         Efeitos
+
+PrintJob   PLANEJADA                        IMPRIMINDO         Iniciar                      Grava started_at ; impressora fica
+                                                                                            ocupada
+
+PrintJob   IMPRIMINDO                       CONCLUIDA          Finalizar                    Consumo de filamento, custos, falhas,
+                                                                                            saídas
+
+PrintJob   IMPRIMINDO                       FALHOU             Registrar falha Consumo de filamento; todo custo vai
+
+                                                               total                        para falhas
+
+PrintJob   PLANEJADA                        CANCELADA          Cancelar                     Nenhum
+
+PrintJob   CONCLUIDA / FALHOU               estornada          Estornar                     Movimentos inversos (RN-21)
+
+PrintJobOutput —                            AGUARDANDO_ACABAMENTO Finalizar                 Peças contam como "em produção"
+                                                                                 impressão
+
+PrintJobOutput AGUARDANDO_ACABAMENTO LIBERADA                  Liberar                      Componentes baixados, trabalho
+                                                                                            somado, PRODUCTION_OUTPUT (RN-10)
+
+11.2 Serviços
+
+Serviço                                     Entrada principal                               Regras
+
+plan_print_job                              impressora, saídas (variação +                  Pré-preenche gramas e
+                                            quantidade), data                               minutos pela ficha ativa
+
+start_print_job                             job, horário                                    Bloqueia se a impressora já
+                                                                                            tem job IMPRIMINDO
+
+finish_print_job                            job, minutos reais, gramas reais                RN-06 a RN-10
+                                            por filamento (e por saída,
+                                            opcional), boas/falhas por saída,
+                                            motivo
+
+fail_print_job                              job, minutos até a falha, gramas                RN-09
+                                            gastos, motivo
+
+record_post_process saída, minutos, tipo                                                    RN-09
+
+release_output                              saída, quantidade final aprovada RN-09, RN-10, RN-18
+
+reverse_print_job                           job, motivo                                     RN-21
+
+11.3 Exemplo de cálculo (teste de referência)
+
+Usa as taxas da Wabee (R$ 1,20 por hora, R$ 0,10 por grama); a argola de R$ 0,30 é
+ilustrativa.
+
+                                                                                                                         Page 52 of 87
+Wabee — Especificação do Sistema de Gestão
+
+Passo                                       Valor
+
+Mesa planejada                              6 Chaveiros Abelha (8 g cada) + 4 Chaveiros
+                                            Coração (6 g cada), PLA preto
+
+Real informado                              80 g de PLA (72 g de peças + 8 g de purga/suporte),
+                                            90 minutos
+
+Material da impressão                       80 × 0,10 = R$ 8,00
+
+Operacional                                 1,5 h × 1,20 = R$ 1,80
+
+Custo da impressão                          R$ 9,80
+
+Rateio (RN-08)                              Abelha 48 g ÷ 72 g = 0,666667; Coração 0,333333
+
+Alocado à Abelha                            R$ 6,533333 (material 5,333333 + operacional 1,20)
+
+Alocado ao Coração                          R$ 3,266667 (material 2,666667 + operacional 0,60)
+
+Custo unitário de impressão Abelha R$ 1,088889; Coração R$ 0,816667
+
+Resultado                                   5 Abelhas boas, 1 com falha; 4 Corações bons
+
+Custo de falhas                             1 × 1,088889 = R$ 1,09
+
+Liberação da Abelha                         + argola 0,30 por unidade → R$ 1,388889 por
+                                            unidade (material 1,188889 + operacional 0,20)
+
+Entrada no estoque                          5 Abelhas a R$ 1,388889 e 4 Corações a R$ 0,816667
+
+O teste deve verificar também: soma alocada = R$ 9,80; custo das boas + falhas = custo da
+impressão; saldo de PLA reduzido em 80 g.
+
+US-5.1 — Planejar impressão · P1
+
+Como dono, quero planejar o que vou imprimir para saber antes quanto material vou usar
+e quanto vai custar.
+
+Critérios de aceite:
+
+    Dado Nova impressão, quando escolho impressora e adiciono uma ou mais variações
+    com quantidade, então o sistema preenche gramas por filamento e minutos pela ficha
+    ativa, editáveis.
+    Dado a quantidade maior que units_per_plate , então o sistema avisa e sugere dividir
+    em mais mesas.
+    Dado o planejamento, então vejo custo previsto por camada e por saída antes de salvar.
+
+                                                                                                 Page 53 of 87
+Wabee — Especificação do Sistema de Gestão
+
+    Dado uma variação sem ficha ativa, então posso informar gramas e minutos
+    manualmente e o sistema oferece criar a ficha com esses dados.
+
+US-5.2 — Verificar materiais · P1
+
+Como dono, quero saber se tenho filamento e componentes suficientes para não perder
+uma impressão no meio.
+Critérios de aceite:
+
+    Dado o planejamento, então cada filamento mostra necessário, disponível e carretel
+    que será usado, com alerta se o carretel aberto não comporta (vai trocar no meio).
+    Dado falta de material, então a impressão pode ser salva como PLANEJADA com aviso,
+    mas não pode ser iniciada sem confirmação.
+    Dado componentes da montagem, então o sistema mostra se há argolas/ímãs
+    suficientes para as peças planejadas.
+
+US-5.3 — Iniciar impressão · P1
+
+Como dono, quero marcar que comecei a imprimir para saber o que está rodando e
+quando deve terminar.
+Critério de aceite: dado uma impressão planejada, quando toco Iniciar, então o status vira
+ IMPRIMINDO , started_at é gravado e a Visão geral mostra previsão de término
+( started_at + est_minutes ).
+
+US-5.4 — Finalizar impressão · P1
+
+Como dono, quero informar o que realmente aconteceu na impressão para que estoque e
+custos fiquem reais.
+Critérios de aceite:
+
+    Dado Finalizar, quando a tela abre, então minutos reais vêm calculados ( agora −
+    started_at ) e gramas reais vêm com o estimado, ambos editáveis.
+    Dado gramas reais por filamento, quando confirmo, então o filamento sai do estoque
+    ( PRODUCTION_CONSUMPTION ) do carretel aberto (US-1.6).
+    Dado cada saída, quando informo boas e falhas (soma = planejado) e o motivo das
+    falhas, então os custos são rateados e calculados como no exemplo 11.3.
+    Dado saídas sem pós-processamento na ficha, então são liberadas na hora e entram no
+    estoque.
+    Dado saídas com pós-processamento, então ficam AGUARDANDO_ACABAMENTO e
+    aparecem na fila de acabamento.
+
+                                                                                                                                                                                                                                          Page 54 of 87
+Wabee — Especificação do Sistema de Gestão
+
+    Dado a confirmação, então tudo acontece numa transação; se faltar saldo de filamento,
+    nada é gravado e a tela mostra o item em falta.
+
+US-5.5 — Falha total · P1
+
+Como dono, quero registrar uma impressão que falhou inteira para que o material e o
+tempo perdidos apareçam.
+Critérios de aceite:
+
+    Dado uma impressão IMPRIMINDO , quando registro falha com motivo, minutos até a
+    falha e gramas gastos, então o filamento é baixado, o status vira FALHOU e todo o custo
+    vai para "Custo de falhas".
+    Dado a falha, então o sistema oferece "Replanejar", que cria uma nova impressão
+     PLANEJADA igual.
+
+US-5.6 — Acabamento e liberação · P1
+
+Como dono, quero registrar o acabamento e a montagem para que argolas e meu tempo
+entrem no custo e as peças fiquem disponíveis para venda.
+Critérios de aceite:
+
+    Dado a fila de acabamento, quando abro uma saída, então registro minutos e tipo de
+    trabalho (pode haver vários registros).
+    Dado Liberar, quando informo a quantidade final aprovada (pode reduzir por defeito no
+    acabamento, com motivo), então componentes da ficha com consumed_at =
+    ASSEMBLY são baixados para as unidades aprovadas.
+    Dado a liberação, então o custo unitário final (material + componentes + operacional +
+    trabalho) entra no estoque pela RN-10.
+    Dado unidades reprovadas no acabamento, então seu custo de impressão vai para
+    falhas e componentes já montados saem como LOSS .
+
+US-5.7 — Produção para encomenda · P2
+
+Como dono, quero vincular uma impressão a um pedido para acompanhar a encomenda e
+reservar as peças automaticamente.
+Critérios de aceite:
+
+    Dado um pedido de encomenda, quando clico "Produzir", então uma impressão é
+    planejada com as variações e quantidades pendentes do pedido.
+    Dado a liberação dessas saídas, então as peças são reservadas para o pedido (RN-18) e
+    o pedido muda para PRONTO quando tudo estiver reservado.
+
+                                                                                                                                                                                                                                          Page 55 of 87
+Wabee — Especificação do Sistema de Gestão
+
+US-5.8 — Quadro de produção · P2
+
+Como dono, quero ver todas as impressões por status para organizar a fila da impressora.
+Critérios de aceite:
+
+    Dado a tela Produção, então vejo colunas Planejada, Imprimindo, Aguardando
+    acabamento e Concluídas hoje, com cartões mostrando variações, quantidade e
+    previsão.
+    Dado um cartão, quando arrasto entre colunas permitidas, então a ação
+    correspondente abre (iniciar, finalizar).
+    Dado a aba Linha do tempo, então vejo por impressora as impressões do dia em barras
+    de horário.
+
+US-5.9 — Repetir impressão · P2
+
+Como dono, quero repetir uma mesa que já fiz para planejar em um clique.
+Critério de aceite: dado uma impressão concluída, quando clico Repetir, então uma nova é
+planejada com as mesmas saídas, usando as fichas ativas atuais e o tempo real médio
+como estimativa.
+
+US-5.10 — Estornar impressão · P1
+
+Como dono, quero desfazer uma impressão lançada errada para corrigir estoque e custos.
+Critérios de aceite:
+
+    Dado uma impressão cujas peças não foram entregues, quando estorno com motivo,
+    então todos os consumos, saídas e falhas são revertidos numa transação e o job fica
+    marcado como estornado.
+    Dado peças já entregues ou reservadas, então o estorno é bloqueado com a lista de
+    pedidos a ajustar.
+
+US-5.11 — Sugestão de produção · P3
+
+Como dono, quero que o sistema sugira o que imprimir para manter estoque dos mais
+vendidos e atender pedidos.
+Critério de aceite: dado produtos abaixo do mínimo e encomendas pendentes, então a
+lista "O que imprimir" ordena por: encomendas por prazo, depois produtos por margem
+por hora de máquina × giro.
+
+                                                                                                                                                                                                                                          Page 56 of 87
+Wabee — Especificação do Sistema de Gestão
+
+12. Módulo 6 — Vendas, pedidos, reservas e recebimentos
+
+Venda tem três momentos independentes: confirmar (compromisso, reserva), entregar
+(estoque sai, receita e CMV reconhecidos) e receber (dinheiro entra). A venda de balcão
+junta os três numa tela só; a encomenda os separa no tempo.
+
+12.1 Estados do pedido
+
+De                                          Para        Ação                    Efeitos
+—                                                       Criar
+                                            RASCUNHO    Confirmar               Nenhum
+RASCUNHO                                    CONFIRMADO
+                                                                                Reserva o saldo livre
+CONFIRMADO                                  EM_PRODUCAO Produzir                disponível; cria conta a
+                                                                   (encomenda)  receber e parcelas; calcula
+CONFIRMADO /                                                                    taxas estimadas
+                                            PRONTO      Automático
+EM_PRODUCAO                                                                     Planeja impressões vinculadas
+                                            ENTREGUE    Entregar
+PRONTO (ou                                                                      Todas as linhas totalmente
+CONFIRMADO com                              CANCELADO   Cancelar                reservadas
+saldo)
+qualquer antes de                                                               SALE_ISSUE ,
+                                                                                PACKAGING_ISSUE , CMV,
+ENTREGUE                                                                        receita, taxas finais
+
+                                                                                Libera reservas; cancela
+                                                                                parcelas abertas; sinal
+                                                                                recebido vira reembolso ou
+                                                                                crédito
+
+12.2 Serviços
+
+Serviço                                                           Regras
+                                                                  RN-12 (estimado), RN-18
+confirm_order(order)                                              RN-18
+
+reserve(order_line, qty) /                                        RN-11, RN-12, RN-13
+
+release_reservation(...)                                          RN-12 (taxa de pagamento)
+
+deliver_order(order, delivery_data,
+packaging)
+
+receive_installment(installment, amount,
+account, fee)
+
+                                                                                             Page 57 of 87
+Wabee — Especificação do Sistema de Gestão
+
+Serviço                                              Regras
+
+quick_sale(...)                                      Executa confirmar + entregar + receber
+                                                     numa transação
+cancel_order(order, reason) /                        RN-21
+
+return_items(order, lines, reason)
+
+12.3 Exemplo de referência: a primeira venda da Wabee
+
+Linha                                       Valor
+
+Receita (2 × R$ 5,00, venda direta) R$ 10,00
+
+CMV (2 × R$ 1,66, custo informado) R$ 3,32
+
+Taxas de canal e pagamento                  R$ 0,00
+
+Margem de contribuição                      R$ 6,68 (66,8%)
+
+Como essas peças foram feitas antes do sistema, a venda é lançada como histórica (US-
+6.11).
+
+US-6.1 — Clientes · P1
+
+Como dono, quero guardar contato de quem compra para atender encomendas e vender
+de novo.
+
+Critérios de aceite:
+
+    Dado o pedido, quando digito o nome de um cliente novo, então posso criá-lo ali só com
+    nome e telefone/Instagram.
+    Dado a ficha do cliente, então vejo pedidos, total comprado, última compra e produtos
+    preferidos.
+    Dado marketing_consent = False , então o cliente não aparece em exportações de
+    contatos para divulgação (LGPD).
+    Dado o pedido de exclusão do cliente, quando confirmo, então os dados pessoais são
+    anonimizados e os pedidos continuam nos relatórios.
+
+US-6.2 — Canais e taxas · P1
+
+Como dono, quero cadastrar onde vendo e quanto cada lugar cobra para que a margem
+seja calculada certa.
+Critérios de aceite:
+
+                                                             Page 58 of 87
+Wabee — Especificação do Sistema de Gestão
+
+    Dado um canal, quando informo taxa percentual, taxa fixa (por pedido ou por unidade)
+    e taxa de pagamento padrão, então são gravadas com vigência; mudança cria nova
+    vigência.
+    Dado a tela de canais, então cada canal mostra pedidos, faturamento e margem do mês.
+    Dado uma taxa de marketplace que muda com frequência, então a tela lembra que o
+    dono deve conferir a tabela oficial do canal ao cadastrar.
+
+US-6.3 — Venda rápida · P1
+
+Como dono, quero registrar uma venda de pronta entrega em poucos toques para lançar
+na hora, até numa feira.
+Critérios de aceite:
+
+    Dado Nova venda rápida no celular, quando escolho produtos (busca ou grade com
+    fotos), quantidade, canal e forma de recebimento, então vejo o total e confirmo com um
+    toque.
+    Dado a confirmação, então numa transação: pedido ENTREGUE , estoque baixado,
+    embalagem padrão baixada (editável), CMV gravado e recebimento lançado na conta
+    escolhida.
+    Dado saldo livre insuficiente, então a venda é bloqueada e a tela oferece transformar
+    em encomenda.
+    Dado o modo Feira, quando ativo, então a tela mantém canal e conta fixos e mostra o
+    total vendido no dia.
+
+US-6.4 — Pedido e encomenda · P1
+
+Como dono, quero registrar encomendas com prazo e sinal para organizar produção e
+cobrança.
+Critérios de aceite:
+
+    Dado um pedido ENCOMENDA , quando informo prazo de entrega, linhas, preço e
+    condição de pagamento (ex.: 50% de sinal + 50% na entrega), então as parcelas a
+    receber são criadas com vencimentos.
+    Dado o pedido confirmado, então a Visão geral mostra encomendas por prazo, com
+    alerta para prazos em até 3 dias sem peças prontas.
+    Dado o pedido, então vejo custo estimado, taxas e margem prevista antes de confirmar.
+
+US-6.5 — Reservas · P1
+
+Como dono, quero separar peças prontas para um pedido para não vender a mesma peça
+duas vezes.
+
+                                                                                                                                                                                                                                          Page 59 of 87
+Wabee — Especificação do Sistema de Gestão
+
+Critérios de aceite:
+    Dado a confirmação, então o sistema reserva automaticamente o que houver de saldo
+    livre e mostra o que falta produzir.
+    Dado peças reservadas, então elas não aparecem como livres no estoque, na venda
+    rápida nem na margem potencial.
+    Dado uma reserva, quando a libero manualmente, então volta ao saldo livre e o pedido
+    volta a CONFIRMADO .
+
+US-6.6 — Entrega · P1
+
+Como dono, quero registrar a entrega para baixar o estoque e reconhecer a venda.
+Critérios de aceite:
+
+    Dado Entregar, quando informo data, método, rastreio, embalagens usadas e frete
+    pago, então as reservas são consumidas, as peças saem com SALE_ISSUE e as
+    embalagens com PACKAGING_ISSUE .
+    Dado a entrega, então o pedido grava CMV por camada, taxa do canal final,
+    embalagem, frete e margem de contribuição (RN-13).
+    Dado entrega parcial, então o pedido continua aberto com as linhas pendentes, e cada
+    entrega gera seus movimentos.
+
+US-6.7 — Recebimentos · P1
+
+Como dono, quero registrar quando o dinheiro entra para saber o que já recebi e o que
+ainda falta.
+Critérios de aceite:
+
+    Dado uma parcela a receber, quando dou baixa com data, valor, conta e taxa
+    (maquininha, Pix com tarifa, antecipação), então é criado lançamento de caixa de
+    entrada pelo valor líquido e a taxa vai para despesas de venda.
+    Dado venda em marketplace, quando a parcela é criada, então o vencimento é a data
+    prevista de repasse (prazo do canal) e o valor esperado já desconta a taxa do canal.
+    Dado recebimento menor que o previsto, então o saldo restante fica aberto ou pode
+    ser baixado como desconto/perda, com motivo.
+    Dado a ficha do pedido, então vejo vendido, recebido e a receber.
+
+US-6.8 — Cancelamento · P2
+
+Como dono, quero cancelar um pedido para liberar peças e cobranças.
+Critérios de aceite:
+
+                                                                                                                                                                                                                                          Page 60 of 87
+Wabee — Especificação do Sistema de Gestão
+
+    Dado um pedido não entregue, quando cancelo com motivo, então reservas são
+    liberadas e parcelas abertas canceladas.
+    Dado sinal já recebido, então escolho: devolver (gera conta a pagar ao cliente) ou
+    manter como crédito do cliente.
+    Dado impressões vinculadas planejadas, então o sistema pergunta se cancela também.
+
+US-6.9 — Devolução e troca · P2
+
+Como dono, quero registrar devolução de peças para corrigir estoque e resultado.
+Critérios de aceite:
+
+    Dado um pedido entregue, quando registro devolução de linhas, então escolho o
+    destino: volta ao estoque ( RETURN_IN pelo custo da venda) ou perda ( LOSS ).
+    Dado a devolução, então a receita e o CMV correspondentes são revertidos no mês da
+    devolução e é criada conta a pagar de reembolso, se houver.
+
+US-6.10 — Brinde no pedido · P2
+
+Como dono, quero mandar um brinde junto com uma venda para fidelizar sem distorcer a
+margem do produto.
+Critério de aceite: dado uma linha marcada is_gift , então ela tem preço zero, sai do
+estoque e seu custo vai para Marketing (não para CMV).
+
+US-6.11 — Vendas anteriores ao sistema · P1
+
+Como dono, quero lançar vendas que fiz antes de começar a usar o sistema para que o
+histórico de receita e margem fique completo.
+Critérios de aceite:
+
+    Dado Nova venda com "Venda anterior ao sistema", quando informo data, produtos,
+    quantidade, preço e custo unitário conhecido, então o pedido é gravado como entregue
+    e recebido, sem movimentar estoque, com CMV = custo informado.
+    Dado esse tipo de venda, então ela é permitida só com data anterior à data de início do
+    sistema ( Settings.go_live_date ).
+
+US-6.12 — Comprovante para o cliente · P3
+
+Como dono, quero gerar um comprovante simples para mandar ao cliente pelo WhatsApp.
+Critério de aceite: dado um pedido, quando clico Comprovante, então gero PDF e texto
+pronto para copiar, com itens, total, pago, a pagar e prazo, deixando claro que não é nota
+fiscal.
+
+                                                                                                                                                                                                                                          Page 61 of 87
+Wabee — Especificação do Sistema de Gestão
+
+US-6.13 — Lista e funil de pedidos · P2
+
+Como dono, quero ver pedidos por status para saber o que precisa de atenção.
+
+Critérios de aceite:
+
+    Dado a tela Vendas, então vejo abas Em aberto, Prontos para entregar, Entregues a
+    receber e Concluídos, com contagem e valor.
+    Dado filtros de período, canal e cliente, então o rodapé mostra faturamento, CMV e
+    margem do filtro.
+
+13. Módulo 7 — Financeiro
+
+O financeiro responde três perguntas separadas: quanto dinheiro a empresa tem e terá
+(caixa), quanto o negócio ganhou (DRE gerencial) e quanto o dono colocou e recebeu de
+volta (investimento do dono). As três vêm das mesmas operações dos outros módulos;
+aqui só se lançam despesas avulsas, transferências e movimentos do dono.
+
+13.1 Regra anti-dupla contagem de energia e depreciação
+
+Energia e depreciação entram no resultado pelas horas de impressão (no CMV, no custo
+de falhas ou no estoque). Por isso:
+
+    A conta de luz paga gera saída de caixa, mas no DRE só entra a diferença entre a parte
+    da empresa na conta e a energia estimada do mês (RN-23), na linha "Diferença de
+    energia".
+    A compra do equipamento gera saída de caixa (ou movimento do dono), mas nunca
+    despesa; o DRE só vê depreciação por hora.
+    Enquanto a taxa for combinada (R$ 1,20), a diferença de energia não pode ser
+    calculada; a conta de luz fica no caixa e o DRE mostra o aviso "energia não conciliada".
+
+13.2 Estrutura do DRE gerencial (mensal, por competência)
+
+Linha                                       Origem
+Receita bruta de vendas                     Linhas entregues no mês
+(−) Descontos e devoluções                  Pedidos e devoluções
+(+) Frete cobrado                           Pedidos entregues
+(=) Receita líquida
+(−) CMV — material                          Snapshot da entrega
+
+                                                                     Page 62 of 87
+Wabee — Especificação do Sistema de Gestão
+
+Linha                                       Origem
+(−) CMV — energia, depreciação e            Snapshot da entrega
+operacional
+(−) CMV — trabalho                          Snapshot da entrega (se valorizado)
+(=) Lucro bruto
+(−) Taxas de canal e de pagamento           Pedidos e recebimentos
+(−) Embalagem e frete pago                  Pedidos entregues
+(−) Brindes e amostras                      GIFT , SAMPLE
+(=) Margem de contribuição
+(−) Custo de falhas de produção             Impressões e acabamento (RN-09)
+(−) Ajustes de estoque e perdas             LOSS , inventário
+(−) Despesas operacionais                   Despesas avulsas por categoria, manutenção,
+                                            DAS fixo, pró-labore, diferença de energia
+(=) Resultado operacional
+(−) Despesas financeiras                    Juros de parcelas (RN-03), tarifas
+(±) Resultado não operacional               Baixa de equipamento
+(=) Resultado do mês
+
+Compras de material e equipamento, pagamentos de parcela e movimentos do dono não
+aparecem no DRE (RN-26).
+
+US-7.1 — Contas financeiras · P1
+
+Como dono, quero cadastrar onde o dinheiro está para saber o saldo de cada lugar.
+
+Critérios de aceite:
+
+    Dado Nova conta, quando informo nome, tipo, dono ( EMPRESA ou DONO ), saldo e data
+    de abertura, então a conta aparece no seletor de pagamentos e recebimentos.
+    Dado um cartão de crédito, quando informo dia de fechamento e de vencimento, então
+    compras nele sugerem o 1º vencimento (US-3.3).
+    Dado contas do DONO , então elas servem só para registrar quem pagou; não aparecem
+    no saldo de caixa da empresa.
+    Dado a lista de contas, então vejo saldo atual de cada conta da empresa e o total.
+
+                                            Page 63 of 87
+Wabee — Especificação do Sistema de Gestão
+
+US-7.2 — Categorias financeiras · P1
+
+Como dono, quero um plano de categorias pronto para classificar despesas sem pensar
+em contabilidade.
+Critérios de aceite:
+
+    Dado a instalação, então as categorias padrão da seção 18 são criadas com natureza e
+    flag de DRE.
+    Dado uma categoria em uso, então ela pode ser renomeada ou desativada, mas não
+    apagada nem mudar de natureza.
+
+US-7.3 — Contas a pagar · P1
+
+Como dono, quero ver tudo que tenho para pagar e quando para não atrasar nada.
+Critérios de aceite:
+
+    Dado a tela Contas a pagar, então vejo parcelas abertas agrupadas em Atrasadas, Esta
+    semana, Este mês e Futuras, com fornecedor, origem, número da parcela, valor e
+    pagador previsto.
+    Dado o filtro pagador, quando escolho DONO ou EMPRESA , então vejo só os
+    compromissos de cada um.
+    Dado a visão calendário, então vejo os vencimentos por dia do mês com total diário.
+
+US-7.4 — Pagar parcela · P1
+
+Como dono, quero dar baixa numa parcela para registrar o pagamento e atualizar caixa ou
+investimento do dono.
+Critérios de aceite:
+
+    Dado uma parcela, quando dou baixa com data, valor, conta e pagador, então: se
+     EMPRESA , cria saída de caixa; se DONO , cria OwnerMovement (RN-19).
+    Dado valor pago maior que o da parcela, então a diferença é registrada como
+    juros/multa por atraso (despesa financeira).
+    Dado valor menor, então a diferença é desconto obtido ou fica como saldo em aberto, à
+    escolha.
+    Dado seleção múltipla, quando pago a fatura do cartão inteira, então todas as parcelas
+    daquele vencimento são baixadas juntas.
+    Dado uma baixa errada, quando estorno, então os lançamentos gerados são revertidos
+    e a parcela volta a ABERTA .
+
+                                                                                                                                                                                                                                          Page 64 of 87
+Wabee — Especificação do Sistema de Gestão
+
+US-7.5 — Contas a receber · P1
+
+Como dono, quero ver o que meus clientes e marketplaces me devem para cobrar e
+planejar.
+Critério de aceite: dado a tela Contas a receber, então vejo parcelas abertas por
+vencimento, cliente, pedido e canal, com total atrasado em destaque; a baixa segue a US-
+6.7.
+
+US-7.6 — Despesas avulsas e recorrentes · P1
+
+Como dono, quero lançar despesas como internet, anúncio, software e DAS para que o
+resultado mostre o custo real de manter o negócio.
+Critérios de aceite:
+
+    Dado Nova despesa, quando informo descrição, categoria, valor, competência,
+    vencimento e pagador, então é criada uma conta a pagar com uma parcela (ou já paga).
+    Dado "Repetir mensalmente" (P2), então o sistema gera a próxima ocorrência todo mês
+    até uma data final, com valor editável.
+    Dado uma despesa de uso misto (internet da casa), quando informo o percentual da
+    empresa, então só essa parte entra no DRE.
+
+US-7.7 — Transferência entre contas · P2
+
+Como dono, quero registrar dinheiro que mudou de conta para que os saldos fiquem
+certos sem virar receita ou despesa.
+Critério de aceite: dado uma transferência entre duas contas da empresa, então são
+criados dois lançamentos com o mesmo transfer_group , fora do DRE e fora do fluxo
+operacional.
+
+US-7.8 — Movimentos do dono · P1
+
+Como dono, quero registrar o que coloco e retiro do negócio para saber quanto investi e
+quanto já recuperei.
+Critérios de aceite:
+
+    Dado Novo movimento do dono, quando escolho o tipo (aporte em dinheiro,
+    empréstimo, reembolso, pagamento de empréstimo, pró-labore, distribuição de lucro),
+    então a conta da empresa envolvida recebe a entrada ou saída correspondente.
+    Dado o painel Investimento do dono, então vejo: total colocado (por tipo), total retirado
+    (por tipo), investimento líquido, saldo de empréstimos a devolver, reembolsos
+    pendentes, compromissos futuros em parcelas pagas pelo dono e percentual
+    recuperado (RN-27).
+
+                                                                                                                                                                                                                                          Page 65 of 87
+Wabee — Especificação do Sistema de Gestão
+
+    Dado uma distribuição de lucro maior que o resultado acumulado, então o sistema avisa
+    que a retirada supera o lucro apurado.
+
+US-7.9 — Conta de luz e conciliação · P2
+
+Como dono, quero comparar a energia estimada com a conta real para calibrar a taxa por
+hora.
+Critérios de aceite:
+
+    Dado Nova conta de luz, quando informo mês, kWh, valor e a parte da empresa
+    (percentual ou kWh medido na tomada), então é criada a conta a pagar e calculado o
+    valor da empresa.
+    Dado taxas de energia separadas, então a tela mostra estimado × real, a diferença em
+    reais e em %, e a taxa sugerida (RN-23), com botão para criar nova vigência.
+    Dado a taxa combinada, então a tela explica que a conciliação exige dividir a taxa (US-
+    2.5).
+
+US-7.10 — Fluxo de caixa · P1
+
+Como dono, quero ver o caixa realizado e o projetado para saber se vou conseguir pagar
+as contas dos próximos meses.
+Critérios de aceite:
+
+    Dado a visão Realizado, então vejo por dia, semana ou mês: saldo inicial, entradas,
+    saídas por categoria e saldo final das contas da empresa.
+    Dado a visão Projetado, então vejo os próximos 12 meses: saldo atual + recebimentos
+    previstos − pagamentos previstos da empresa, com o mês em que o saldo fica negativo
+    destacado.
+    Dado parcelas pagas pelo dono, então aparecem numa linha informativa separada
+    ("compromissos pagos pelo dono"), fora do saldo da empresa.
+
+US-7.11 — DRE gerencial · P1
+
+Como dono, quero um demonstrativo mensal para saber se o negócio dá lucro de verdade.
+Critérios de aceite:
+
+    Dado o mês, então o DRE segue a estrutura 13.2, com coluna de valor, % da receita
+    líquida e comparação com o mês anterior.
+    Dado o seletor de período, então posso ver acumulado do ano ou desde o início.
+    Dado qualquer linha, quando clico, então vejo os lançamentos que a compõem, com link
+    para a origem.
+
+                                                                                                                                                                                                                                          Page 66 of 87
+Wabee — Especificação do Sistema de Gestão
+
+    Dado a exportação, então gero XLSX com o DRE e o detalhamento.
+
+US-7.12 — Fechamento do mês · P2
+
+Como dono, quero fechar o mês para que os números de um mês passado não mudem
+sem eu saber.
+Critérios de aceite:
+
+    Dado Fechar mês, então o sistema mostra pendências antes: impressões sem finalizar,
+    compras sem receber, parcelas vencidas sem baixa, conta de luz sem lançar, inventário
+    não feito.
+    Dado a confirmação, então os indicadores do mês são gravados em
+     MonthClose.metrics e lançamentos com data no mês passam a ser recusados (RN-
+    22).
+    Dado a reabertura pelo dono, então ela exige motivo e fica na auditoria.
+
+US-7.13 — Conferência de saldos · P2
+
+Como dono, quero comparar o saldo do sistema com o do banco para achar lançamentos
+esquecidos.
+Critérios de aceite:
+
+    Dado uma conta, quando informo o saldo do extrato numa data, então vejo a diferença
+    para o saldo do sistema e a lista de lançamentos não conferidos.
+    Dado cada lançamento, quando marco "conferido", então ele sai da lista de pendentes.
+    Dado um arquivo OFX do banco (P3), quando importo, então o sistema sugere
+    correspondências com os lançamentos existentes.
+
+14. Módulo 8 — Dashboard e relatórios
+
+O dashboard tem uma Visão geral que responde "como está o negócio?" em 10 segundos e
+sete painéis detalhados para investigar. Ele não grava nada: só lê, por meio de
+ dashboard/selectors.py , os dados que os outros módulos produziram.
+
+14.1 Princípios de tela
+
+ 1. Real e estimado nunca se misturam sem aviso. Todo número tem uma marca: sólido =
+    real (vendas entregues, dinheiro movimentado); tracejado/ícone "~" = estimado
+    (energia, depreciação, margem potencial, valores com custo de referência). Um tooltip
+    explica a origem.
+
+                                                                                                                                                                                                                                          Page 67 of 87
+Wabee — Especificação do Sistema de Gestão
+
+2. Seletor de camada de custo presente em toda margem: Direto (material) · Direto +
+    operacional · Completo (com trabalho). Padrão: Direto + operacional.
+
+3. Tudo é clicável até a origem. Qualquer número abre a lista que o compõe, e cada linha
+    abre o documento.
+
+4. Filtros globais no topo, mantidos ao trocar de painel: período (padrão: mês atual;
+    atalhos 7 dias, mês, mês anterior, ano, desde o início), produto/variação, canal,
+    impressora.
+
+5. Comparação com o período anterior equivalente em todo indicador principal (seta e
+    %).
+
+6. Celular primeiro na Visão geral: os cards empilham numa coluna, nesta ordem: alertas,
+    indicadores, caminho do valor, gráficos.
+
+14.2 Visão geral — indicadores do topo
+
+Indicador           Fórmula                             Tipo
+Caixa disponível                                        Real
+A pagar em 30 dias  Soma dos saldos das contas da       Real
+                    empresa
+A receber                                               Real
+Vendas do período   Parcelas abertas com vencimento ≤   Real
+Margem realizada    hoje + 30, separadas por pagador    Real + estimado (camada
+                    (empresa / dono)                    operacional)
+Estoque pronto                                          Estimado
+Margem potencial    Parcelas a receber abertas          Estimado
+Investimento        (atrasadas em destaque)             Real
+recuperado
+                    Receita líquida das entregas no
+                    período
+
+                    Margem de contribuição do período,
+                    em reais e %, na camada escolhida
+                    (RN-13)
+
+                    Custo e valor de venda das peças
+                    livres
+
+                    RN-14 sobre o saldo livre
+
+                    Retorno acumulado ÷ investimento
+                    líquido do dono (RN-27)
+
+14.3 Caminho do valor
+
+Um bloco horizontal com cinco etapas mostra onde está o valor do que a Wabee produz.
+Cada etapa exibe quantidade de peças, custo acumulado e valor de venda.
+
+                                                        Page 68 of 87
+Wabee — Especificação do Sistema de Gestão
+
+Etapa        Peças                           Custo          Valor de venda
+
+Em produção  Saídas AGUARDANDO_ACABAMENTO    Custo          Quantidade ×
+             + impressões IMPRIMINDO         acumulado até  preço de
+             (planejado)                     agora          referência
+
+Em estoque   Saldo livre de produto pronto   Custo médio ×  RN-14
+(livre)                                      quantidade
+
+Reservado    Reservas ativas                 Custo médio ×  Preço dos pedidos
+                                             quantidade
+
+Vendido a    Entregas com parcela a receber  CMV da entrega Valor a receber
+receber      aberta
+                                             CMV            Valor recebido
+Recebido     Entregas totalmente recebidas
+(período)    no período
+
+Abaixo de cada etapa, um link "ver peças". A etapa "Em estoque" mostra também "parado
+há mais de 30 dias" quando houver.
+
+14.4 Visão geral — demais blocos
+
+    Alertas (no topo, só quando existirem): parcela vencida ou vencendo em 3 dias;
+    encomenda com prazo em até 3 dias sem peças prontas; item abaixo do mínimo;
+    carretel aberto com menos de 100 g; manutenção próxima; impressão IMPRIMINDO há
+    mais tempo que o estimado + 30 min; pendências do assistente inicial; mês anterior não
+    fechado.
+    Agora na impressora: impressões em andamento com previsão de término e fila do dia.
+    Gráfico Vendas × margem (barras por semana/mês, margem como linha).
+    Gráfico Composição de custo das peças vendidas (barras empilhadas: material,
+    energia, depreciação, operacional combinado, trabalho).
+    Gráfico Caixa projetado (linha de 12 meses com saldo previsto da empresa; parcelas
+    pagas pelo dono em linha separada).
+    Top 5 produtos por margem por hora de máquina no período.
+
+                                                                   Page 69 of 87
+Wabee — Especificação do Sistema de Gestão
+
+14.5 Painéis detalhados
+
+Painel        Indicadores                   Gráficos                 Tabelas
+Produção
+              Horas de máquina,             Horas por dia; falhas    Impressões do
+Produtos      ocupação %,                   por motivo (barras);     período com custo
+Estoque       impressões, peças             custo produzido por      previsto × real
+Vendas        boas, taxa de falha           camada
+Caixa         (valor e unidades),
+Investimento  gramas consumidos,
+do dono       gramas perdidos
+
+Calibração    Margem unitária,              Dispersão margem %       Por variação: custo
+              margem por hora de            × giro; ranking MHM      estimado, custo real
+              máquina, giro,                                         médio, preço,
+              unidades vendidas                                      margem, estoque
+
+              Valor total por tipo,         Valor por tipo ao longo  Posição por item com
+              itens em alerta, peças        do tempo; consumo        cobertura
+              paradas > 30 dias,            de filamento por cor
+              cobertura de filamento
+
+              Faturamento, ticket           Faturamento por          Pedidos do período;
+              médio, pedidos, taxas         canal; vendas por dia    clientes que mais
+              pagas, margem por             da semana                compram
+              canal
+
+              Saldo, entradas, saídas,      Realizado × projetado;   Fluxo de caixa mensal
+              projeção, mês de              saídas por categoria     (US-7.10)
+              menor saldo
+
+              Total investido, já           Investido acumulado × Movimentos do dono
+              recuperado, a                 retorno acumulado
+              recuperar, parcelas
+              futuras pagas pelo
+              dono, previsão de
+              retorno
+
+              Energia estimada ×            Diferença mensal de      Fichas com desvio >
+              real, depreciação             energia; desvio por      15%
+              acumulada × valor do          ficha
+              equipamento, custo
+              previsto × real das
+              fichas
+
+                                                                              Page 70 of 87
+Wabee — Especificação do Sistema de Gestão
+
+14.6 Relatórios exportáveis (CSV e XLSX)
+
+    Posição de estoque em uma data (recalculada pelo razão).
+    Extrato de item.
+    DRE gerencial (mensal, anual, desde o início).
+    Fluxo de caixa realizado e projetado.
+    Contas a pagar e a receber.
+    Vendas por produto, canal e cliente.
+    Produção por período com custos por camada.
+    Movimentos do dono.
+    Custo de cada produto (ficha × real).
+
+14.7 Implementação
+
+    Cada card é uma view parcial HTMX carregada em paralelo ( hx-trigger="load" ), para
+    a página abrir rápido mesmo com consultas pesadas.
+    Consultas em selectors.py com agregação no banco ( Sum , Case/When , Window ),
+    nunca loops em Python sobre movimentações.
+    Meta de desempenho: Visão geral completa em menos de 1,5 s com 50 mil
+    movimentações.
+     DailyMetric (P2): snapshot diário de saldo de estoque por tipo, caixa e reservas,
+    gerado por tarefa às 23h55, para gráficos históricos rápidos.
+    Gráficos com ECharts; cores fixas por camada em todo o sistema (material, energia,
+    depreciação, operacional, trabalho), definidas num único arquivo de tema.
+    Testes: cada indicador tem teste com cenário montado por factories e valor esperado
+    calculado à mão.
+
+US-8.1 — Visão geral · P1
+
+Como dono, quero abrir o sistema e ver a saúde do negócio para decidir o que fazer no dia.
+Critérios de aceite:
+
+    Dado o login, então a Visão geral abre com alertas, os 8 indicadores de 14.2, o caminho
+    do valor e os gráficos de 14.4.
+    Dado o seletor de camada, quando troco, então todas as margens da tela recalculam
+    sem recarregar a página.
+    Dado um número estimado, então ele aparece com a marca de estimado e tooltip
+    explicando a origem.
+    Dado o celular, então os blocos aparecem empilhados na ordem do princípio 6.
+
+                                                                                                                                                                                                                                          Page 71 of 87
+Wabee — Especificação do Sistema de Gestão
+
+US-8.2 — Caminho do valor · P1
+
+Como dono, quero ver quanto valor está em cada etapa para saber se tenho peça parada,
+dinheiro a receber ou produção atrasada.
+Critérios de aceite:
+
+    Dado o bloco, então cada etapa mostra peças, custo e valor de venda calculados como
+    em 14.3.
+    Dado uma peça, então ela aparece em uma única etapa por vez (teste obrigatório: soma
+    das etapas de estoque = saldo de produto pronto).
+    Dado clique numa etapa, então abro a lista de peças/pedidos dela.
+
+US-8.3 — Painéis detalhados · P2
+
+Como dono, quero investigar produção, produtos, estoque, vendas, caixa, investimento e
+calibração para entender o porquê dos números.
+Critério de aceite: dado cada painel da tabela 14.5, então ele mostra seus indicadores,
+gráficos e tabelas, respeita os filtros globais e permite exportar a tabela principal.
+
+US-8.4 — Relatórios · P2
+
+Como dono, quero exportar relatórios para analisar em planilha ou enviar ao contador.
+Critério de aceite: dado a tela Relatórios, quando escolho um relatório de 14.6, período e
+formato, então baixo o arquivo com cabeçalho (empresa, período, data de geração) e
+valores em formato brasileiro.
+
+15. Módulo 9 — Importação do fatiador (G-code / 3MF)
+
+O fatiador já calcula gramas e tempo de cada mesa; importar o arquivo elimina a digitação
+desses números na ficha técnica e no planejamento. É a última fase da v1 porque depende
+de fichas e produção prontas, e porque o formato varia por fatiador e versão.
+
+15.1 Arquitetura
+
+  @dataclass
+  class FilamentUse:
+
+          slot: int
+          material: str | None
+          color_hex: str | None
+          grams: Decimal | None
+          meters: Decimal | None
+
+                                                                                                                                                                                                                                          Page 72 of 87
+Wabee — Especificação do Sistema de Gestão
+
+@dataclass
+class PlateResult:
+
+       index: int
+       print_minutes: Decimal
+       filaments: list[FilamentUse]
+       object_names: list[str]
+
+@dataclass
+
+class SlicerResult:
+
+slicer: str                                 # "PrusaSlicer", "OrcaSlicer", "Bambu Studio",
+
+"Cura"
+
+version: str | None
+
+plates: list[PlateResult]
+
+warnings: list[str]
+
+class SlicerParser(Protocol):
+       def can_parse(self, head: bytes, filename: str) -> bool: ...
+       def parse(self, file: BinaryIO) -> SlicerResult: ...
+
+Um parser por família, registrados numa lista; o primeiro que can_parse processa.
+G-code: ler só os primeiros e últimos 256 KB, onde ficam os comentários de resumo.
+3MF: é um ZIP; ler apenas os arquivos de metadados, com limite de tamanho
+descompactado (proteção contra zip bomb) e XML via defusedxml .
+Limite de upload: 200 MB. O arquivo é guardado como Attachment do tipo GCODE .
+
+15.2 O que procurar em cada formato
+
+Os nomes abaixo são os comentários e arquivos mais comuns, mas mudam entre versões.
+Antes de implementar, o dev deve coletar arquivos reais do fatiador usado pela Wabee e
+montar os testes a partir deles.
+
+Fatiador      Onde                          Tempo             Material
+PrusaSlicer   Comentários no fim do G-code
+                                            estimated         filament used
+                                            printing time
+                                            (normal mode)     [g] e [mm] por
+                                                              extrusora
+
+OrcaSlicer /  Cabeçalho do G-code; no       Tempo estimado /  Peso total e por
+Bambu         .gcode.3mf , o arquivo                          filamento
+Studio                                      prediction        ( used_g ), com
+              Metadata/slice_info.config                      tipo e cor
+Cura                                        (segundos)
+              por mesa
+                                            ;TIME:            ;Filament
+              Cabeçalho do G-code
+                                            (segundos)        used: em metros
+
+                                                                                            Page 73 of 87
+Wabee — Especificação do Sistema de Gestão
+
+Quando só houver metros, converter para gramas:
+
+  g = L_{mm} \cdot \pi \left(\frac{d}{2}\right)^2 \cdot \frac{\rho}{1000}
+
+Com diâmetro 1,75 mm e densidade de PLA em torno de 1,24 g/cm³, 1 metro equivale a
+cerca de 3 g. O sistema usa FilamentSpec.density_g_cm3 e diameter_mm do filamento
+escolhido.
+
+US-9.1 — Enviar arquivo e ler resumo · P2
+
+Como dono, quero enviar o arquivo fatiado para o sistema ler tempo e gramas sozinho.
+Critérios de aceite:
+
+    Dado um G-code ou 3MF, quando envio, então vejo: fatiador detectado, número de
+    mesas e, por mesa, tempo, filamentos (slot, tipo, cor, gramas) e nomes dos objetos.
+    Dado um arquivo não reconhecido, então a tela informa e permite digitar os valores
+    manualmente.
+    Dado valores ausentes (ex.: sem gramas), então o sistema calcula pelos metros (15.2) e
+    marca "convertido".
+
+US-9.2 — Associar filamentos · P2
+
+Como dono, quero dizer qual filamento do estoque corresponde a cada slot para que o
+custo use o material certo.
+Critérios de aceite:
+
+    Dado os slots lidos, então o sistema sugere o filamento do estoque com mesmo
+    material e cor mais próxima (distância de cor pelo hex).
+    Dado a associação confirmada, então ela é lembrada para o próximo arquivo com o
+    mesmo perfil (material + cor do fatiador).
+
+US-9.3 — Criar ou atualizar ficha técnica · P2
+
+Como dono, quero gerar a ficha de uma variação a partir do arquivo para não digitar
+gramas e tempo.
+Critérios de aceite:
+
+    Dado uma mesa com uma única variação, quando escolho a variação e informo quantas
+    unidades a mesa tem, então é criada uma ficha RASCUNHO com gramas por unidade e
+    minutos por mesa.
+    Dado que a variação já tem ficha ativa, então o sistema mostra a comparação (antes ×
+    depois) e cria nova versão.
+
+                                                                                                                                                                                                                                          Page 74 of 87
+Wabee — Especificação do Sistema de Gestão
+
+    Dado o detalhamento de suporte/purga no arquivo, então as linhas FILAMENT_SUPPORT
+    e FILAMENT_PURGE são separadas; senão, tudo vai em FILAMENT_MODEL .
+
+US-9.4 — Planejar impressão a partir do arquivo · P2
+
+Como dono, quero criar a impressão direto do arquivo para planejar a mesa exatamente
+como fatiei.
+Critérios de aceite:
+
+    Dado o resumo, quando clico Planejar, então uma impressão PLANEJADA é criada com
+    tempo e gramas do arquivo, e eu associo os objetos às variações e quantidades.
+    Dado mesa com objetos de variações diferentes, então o peso por objeto (quando o
+    fatiador informar) alimenta o rateio (RN-08); senão, uso o peso da ficha.
+
+US-9.5 — Biblioteca de arquivos · P3
+
+Como dono, quero guardar o arquivo fatiado na variação para reimprimir sem procurar no
+computador.
+Critério de aceite: dado uma variação, então a aba Arquivos lista os G-code/3MF
+importados com data, fatiador, tempo e gramas, e permite baixar.
+
+16. Requisitos não funcionais, testes e backup
+
+O sistema guarda o dinheiro e o estoque da empresa, então consistência, backup e testes
+valem mais que recursos extras. Os itens abaixo são obrigatórios desde a fase 0.
+
+16.1 Requisitos
+
+Área            Requisito                      Como verificar
+Consistência
+                Nenhuma operação deixa         Teste que força exceção no meio
+Concorrência    estoque ou financeiro pela     de cada serviço e confere que
+                metade                         nada foi gravado
+Integridade do
+razão           Duas operações simultâneas no  Teste com duas
+                mesmo item não geram saldo     threads/transações sobre o
+                errado                         mesmo StockBalance
+
+                Saldo em cache = soma do razão, rebuild_balances --check no CI
+
+                para todo item                 e semanal em produção
+
+                                                                           Page 75 of 87
+Wabee — Especificação do Sistema de Gestão
+
+Área                Requisito                          Como verificar
+
+Desempenho          Telas comuns < 500 ms; Visão       django-debug-toolbar em dev;
+                    geral < 1,5 s com 50 mil           teste de carga simples com dados
+                    movimentações                      gerados
+
+Segurança           HTTPS, cookies Secure e            Checklist manage.py check --
+                    HttpOnly , CSRF ativo, senhas      deploy sem avisos
+                    com o hasher padrão do Django,
+                    bloqueio de força bruta
+
+Permissões          Serviços checam permissão, não Testes chamando serviços com
+
+                    só as telas                        usuário sem permissão
+
+Privacidade         Coletar só o necessário do         US-6.1
+(LGPD)              cliente, consentimento de
+                    marketing, anonimização sob
+                    pedido
+
+Usabilidade         Ações frequentes (venda rápida,    Teste manual em celular a cada
+                    finalizar impressão, pagar         fase
+                    parcela) em até 3 toques a partir
+                    do "+"
+
+Responsividade      Funciona de 360 px a 1920 px de    Teste manual em Chrome DevTools
+                    largura                            + 1 celular real
+
+Acessibilidade      Contraste AA, labels em todos      Lighthouse ≥ 90 em acessibilidade
+                    os campos, navegação por
+                    teclado nas telas de operação
+
+Formato brasileiro  Moeda, número, data e hora em      Testes de formulário
+                    pt-BR; entrada aceita vírgula
+                    decimal
+
+Auditoria           Toda operação registrada (US-      Teste por serviço
+                    0.5)
+
+Observabilidade     Erros no Sentry; log estruturado   Painel do Sentry
+                    de cada serviço com duração
+
+Disponibilidade     Uso de uma pessoa; janela de       —
+
+                    manutenção aceitável; sem
+
+                    exigência de alta disponibilidade
+
+                                                                              Page 76 of 87
+Wabee — Especificação do Sistema de Gestão
+
+16.2 Backup e recuperação
+
+     pg_dump completo diário às 3h, comprimido e criptografado, enviado a armazenamento
+    externo (S3 compatível, em conta separada do servidor).
+    Retenção: 7 diários, 4 semanais, 12 mensais.
+    Arquivos anexos sincronizados para o mesmo destino.
+    Teste de restauração mensal num banco temporário, com conferência de saldos
+    ( rebuild_balances --check ).
+    Exportação manual completa (US-0.10) disponível a qualquer momento.
+
+16.3 Estratégia de testes
+
+Nível                O que cobre                            Meta
+Unitário de cálculo
+Serviço              Todas as RN da seção 5, com os         100% das funções de
+                     exemplos do documento                  cálculo
+Propriedade
+(hypothesis)         Cada serviço com caminho feliz,        ≥ 90% de cobertura em
+                     cada critério de aceite e cada erro
+Integração de tela   previsto                               services.py
+
+Cenário de           Razão de estoque: qualquer             Rodar no CI
+referência           sequência de entradas e saídas
+                     válidas mantém saldo ≥ 0, saldo =
+                     soma, custo médio ≥ 0;
+                     split_amount sempre soma o total
+
+                     Fluxos principais via Django test      1 teste por fluxo
+                     client: compra → recebimento →
+                     impressão → venda → recebimento →
+                     pagamento
+
+                     Base de dados com os números da        Teste de regressão
+                     Wabee (seção 18) e o exemplo 11.3; os
+                     indicadores do dashboard devem
+                     bater com valores calculados à mão
+
+16.4 Definição de pronto (vale para toda história)
+
+    Critérios de aceite implementados, cada um com teste automatizado.
+    Regra de negócio citada (RN-xx / US-x.y) na docstring do serviço.
+    Migração criada e revisada (constraints e índices incluídos).
+    Auditoria e permissões aplicadas.
+
+                                                                                 Page 77 of 87
+Wabee — Especificação do Sistema de Gestão
+
+    Tela testada em celular e computador.
+    Mensagens de erro em português claro, dizendo o que fazer.
+    CI verde.
+
+17. Roteiro de implementação
+
+O MVP fica pronto ao fim da fase 6, quando o ciclo comprar → produzir → vender →
+receber → pagar funciona de ponta a ponta com dashboard. Cada fase termina com algo
+usável e com os testes da definição de pronto (16.4). Siga a ordem: cada fase depende das
+anteriores.
+
+Fase 0 — Fundação
+
+Entrega: sistema no ar com login, layout e utilitários.
+    US-0.1 Projeto base, Docker, CI, Sentry
+    US-0.8 BaseModel , dinheiro, quantidades, sequências, idempotência, enums
+    US-0.2 Login e sessão
+    US-0.4 Configurações ( Settings )
+    US-0.5 Auditoria
+    US-0.7 Layout responsivo e menu "+"
+    Deploy de homologação e backup diário configurado (16.2)
+
+Fase 1 — Itens e estoque
+
+Entrega: cadastro de tudo que a Wabee tem e saldo correto por movimentações.
+    US-1.1 Cadastro de item
+    US-1.2 Cadastro de filamento
+     post_movement (7.1) com testes de propriedade
+    US-1.3 Saldo inicial
+    US-1.6 Carretéis
+    US-1.4 Posição de estoque
+    US-1.5 Extrato e rebuild_balances
+    US-1.9 Saídas avulsas
+    US-1.12 Estorno de movimentação
+
+Fase 2 — Equipamentos, taxas e produtos
+
+Entrega: custo estimado de qualquer produto por camada e preço sugerido.
+
+                                                                                                                                                                                                                                          Page 78 of 87
+Wabee — Especificação do Sistema de Gestão
+
+    US-2.1 Equipamento
+    US-2.2 Taxas com vigência e get_rates (8.1)
+    US-2.6 Horímetro
+    US-4.1 Produto e variações
+    US-4.2 Ficha técnica
+    US-4.3 Versões da ficha
+    US-4.4 Custo estimado por camada
+    US-4.5 Preços por canal e preço sugerido (cadastro mínimo de canais da US-6.2 entra
+    aqui)
+
+Fase 3 — Compras e base financeira
+
+Entrega: compras parceladas, pagador dono/empresa, parcelas e investimento do dono.
+    US-7.1 Contas financeiras
+    US-7.2 Categorias financeiras
+    US-3.1 Fornecedores
+    US-3.2 Registrar compra
+    US-3.3 Pagamento e parcelas
+    US-3.4 Quem pagou
+    US-3.5 Receber compra
+    US-3.6 Compras anteriores ao sistema (lançar os R$ 8.509,30)
+    US-3.7 Lista de compras
+    US-7.3 Contas a pagar
+    US-7.4 Pagar parcela
+    US-7.8 Movimentos do dono
+    US-7.6 Despesas avulsas (sem recorrência)
+
+Fase 4 — Produção
+
+Entrega: impressões com consumo real, custos rateados, falhas e entrada no estoque.
+    US-5.1 Planejar impressão
+    US-5.2 Verificar materiais
+    US-5.3 Iniciar impressão
+    US-5.4 Finalizar impressão (teste de referência 11.3)
+    US-5.5 Falha total
+    US-5.6 Acabamento e liberação
+    US-5.10 Estornar impressão
+
+                                                                                                                                                                                                                                          Page 79 of 87
+Wabee — Especificação do Sistema de Gestão
+
+Fase 5 — Vendas e recebimentos
+
+Entrega: venda rápida, encomendas, reservas, entregas e recebimentos.
+    US-6.1 Clientes
+    US-6.2 Canais e taxas (completo)
+    US-6.3 Venda rápida
+    US-6.4 Pedido e encomenda
+    US-6.5 Reservas
+    US-6.6 Entrega
+    US-6.7 Recebimentos
+    US-7.5 Contas a receber
+    US-6.11 Vendas anteriores ao sistema (lançar a venda de 2 × R$ 5,00)
+
+Fase 6 — Dashboard MVP e início de uso
+
+Entrega: Visão geral, caminho do valor, caixa e DRE. Aqui a Wabee começa a usar o
+sistema no dia a dia.
+
+    US-8.1 Visão geral
+    US-8.2 Caminho do valor
+    US-7.10 Fluxo de caixa realizado e projetado
+    US-7.11 DRE gerencial
+    US-0.11 Assistente de configuração inicial
+    Carga dos dados iniciais (seção 18) e conferência com o dono
+    Teste de restauração de backup antes do go-live
+
+Fase 7 — Complementos (P2)
+
+Entrega: controle fino, alertas, calibração e relatórios. Ordem sugerida pelo valor para a
+Wabee:
+
+    US-2.3, US-2.4, US-2.5 Calculadoras e divisão da taxa de R$ 1,20
+    US-1.10 Alertas de estoque
+    US-1.7 Pesagem de carretel
+    US-5.7 Produção para encomenda
+    US-5.8 Quadro de produção
+    US-5.9 Repetir impressão
+    US-4.6 Simulador "e se"
+    US-4.7 Indicadores reais do produto
+
+                                                                                                                                                                                                                                          Page 80 of 87
+Wabee — Especificação do Sistema de Gestão
+
+    US-4.8 Copiar ficha; US-4.9 Encomenda personalizada
+    US-6.8 Cancelamento; US-6.9 Devolução; US-6.10 Brinde; US-6.13 Lista e funil
+    US-7.6 Despesas recorrentes; US-7.7 Transferências
+    US-7.9 Conta de luz e conciliação
+    US-7.12 Fechamento do mês; US-7.13 Conferência de saldos
+    US-2.7 Manutenção; US-2.8 Taxa de trabalho
+    US-1.8 Inventário; US-1.11 Ferramentas
+    US-8.3 Painéis detalhados; US-8.4 Relatórios
+    US-0.3 Perfis e permissões; US-0.6 Anexos; US-0.10 Exportação completa
+     DailyMetric (14.7)
+
+Fase 8 — Importador do fatiador
+
+    Coletar 5 a 10 arquivos reais do fatiador da Wabee (com mesas de uma e de várias
+    cores/objetos)
+    US-9.1 Enviar e ler resumo
+    US-9.2 Associar filamentos
+    US-9.3 Criar ou atualizar ficha
+    US-9.4 Planejar impressão a partir do arquivo
+
+Fase 9 — Desejáveis (P3)
+
+    US-0.9 Busca global
+    US-1.13 Etiquetas com QR
+    US-2.9 Baixa de equipamento
+    US-3.9 Histórico de preços
+    US-4.10 Kits
+    US-5.11 Sugestão de produção
+    US-6.12 Comprovante para o cliente
+    US-9.5 Biblioteca de arquivos
+    Importação OFX (US-7.13)
+
+18. Dados iniciais (seed)
+
+Um comando manage.py seed_wabee cria os cadastros padrão e, opcionalmente ( --
+with-history ), as compras e a venda já feitas. Ele é idempotente: rodar duas vezes não
+duplica nada. Os mesmos dados alimentam o cenário de teste de regressão (16.3).
+
+                                                                                                                                                                                                                                          Page 81 of 87
+Wabee — Especificação do Sistema de Gestão
+
+18.1 Configuração e taxas
+
+Dado                                        Valor                      Observação
+                                            Wabee
+Empresa                                     America/Sao_Paulo          Vigência a partir da data de
+                                            R$ 1,20 por hora, global   início (a confirmar)
+Fuso                                                                   Usado só quando não há custo
+                                            R$ 0,10 por grama (R$ 100  de compra
+Taxa operacional                            por kg)                    A confirmar (seção 19)
+combinada                                   Aporte de capital
+
+Custo de referência de                      Não                        RN-09
+filamento
+                                            Não permitido              RN-20
+Tratamento padrão do
+dinheiro do dono
+
+Absorver falhas no custo
+das peças
+
+Saldo negativo
+
+18.2 Contas financeiras
+
+Conta                                            Tipo                  Dono
+Cartão pessoal (usado nas compras                Cartão de crédito     Dono
+iniciais)
+Conta da empresa                                 Banco ou carteira     Empresa (criar quando
+                                                 digital               existir)
+Dinheiro em espécie                              Dinheiro              Empresa
+
+                                                                              Page 82 of 87
+Wabee — Especificação do Sistema de Gestão
+
+18.3 Compras iniciais
+
+Compra Total                                Parcelas Valores                          Pagador
+                                                                                      Dono
+Compra 1 R$                                 18x     17 × R$ 313,68 + 1 × R$ 313,63
+                                                                                      Dono
+        5.646,19
+
+Compra  R$ 2.863,11 12x                             11 × R$ 238,59 + 1 × R$ 238,62
+2
+
+Total   R$                                          R$ 552,27 por mês enquanto ambas
+        8.509,30                                    estiverem ativas
+
+Pendentes para lançar: data de cada compra, itens de cada uma (impressora, filamentos,
+ferramentas e o valor de cada), valor à vista (para separar juros), vencimento da 1ª parcela
+e quantas já foram pagas. Os valores das parcelas devem ser conferidos com a fatura.
+
+18.4 Venda já realizada
+
+Data            Itens                       Preço   Custo informado Canal
+
+20/10/2026 2 peças R$ 5,00 cada R$ 1,66 cada                        Venda direta (a confirmar)
+
+Lançada como venda anterior ao sistema (US-6.11), sem movimentar estoque.
+
+18.5 Canais de venda
+
+Canal                                       Tipo    Taxas iniciais
+
+Venda direta                                Direto  0%
+
+Instagram / WhatsApp Rede social                    0% de canal; taxa de pagamento conforme o meio
+                                                    (Pix, maquininha)
+
+Feira / evento                              Feira   0% de canal; taxa da maquininha
+
+Shopee                                      Marketplace Preencher com a tabela vigente do canal ao ativar
+
+Mercado Livre                               Marketplace Preencher com a tabela vigente do canal ao ativar
+
+Canais de marketplace são criados inativos; as taxas mudam com frequência e devem ser
+copiadas da tabela oficial na data de ativação.
+
+                                                                                      Page 83 of 87
+Wabee — Especificação do Sistema de Gestão
+
+18.6 Plano de categorias financeiras
+
+Código Categoria                             Natureza          No DRE
+
+1.1  Venda de produtos                       Receita           Sim
+
+1.2  Frete cobrado                           Receita           Sim
+
+1.3  Outras receitas                         Receita           Sim
+
+2.1  CMV — material                          Custo             Sim
+
+2.2  CMV — energia                           Custo             Sim
+
+2.3  CMV — depreciação                       Custo             Sim
+
+2.4  CMV — operacional combinado             Custo             Sim
+
+2.5  CMV — trabalho                          Custo             Sim
+
+2.6  Custo de falhas de produção             Custo             Sim
+
+2.7  Ajustes e perdas de estoque             Custo             Sim
+
+3.1  Taxas de canal                          Despesa de venda  Sim
+
+3.2  Taxas de pagamento                      Despesa de venda  Sim
+
+3.3  Embalagem                               Despesa de venda  Sim
+
+3.4  Frete pago                              Despesa de venda  Sim
+
+3.5  Brindes e amostras                      Despesa de venda  Sim
+
+3.6  Anúncios e marketing                    Despesa de venda  Sim
+
+4.1  Diferença de energia (conciliação)      Despesa operacional Sim
+
+4.2  Manutenção                              Despesa operacional Sim
+
+4.3  Internet e telefone (parte da empresa)  Despesa operacional Sim
+
+4.4  Software e assinaturas                  Despesa operacional Sim
+
+4.5  Impostos fixos (DAS)                    Despesa operacional Sim
+
+4.6  Ferramentas pequenas                    Despesa operacional Sim
+
+4.7  Consumíveis sem controle de estoque     Despesa operacional Sim
+
+4.8  Pró-labore                              Despesa operacional Sim
+
+4.9  Outras despesas                         Despesa operacional Sim
+
+                                                                       Page 84 of 87
+Wabee — Especificação do Sistema de Gestão
+
+Código Categoria                            Natureza            No DRE
+                                                                Sim
+5.1  Juros de parcelamento                  Despesa financeira  Sim
+                                                                Sim
+5.2  Juros e multas por atraso              Despesa financeira  Sim
+                                                                Não
+5.3  Tarifas bancárias                      Despesa financeira  Não
+                                                                Não
+6.1  Ganho ou perda na baixa de equipamento Não operacional     Não
+                                                                Não
+7.1  Compra de equipamentos                 Investimento        Não
+                                                                Não
+7.2  Compra de materiais para estoque       Investimento
+
+8.1  Aporte de capital                      Dono
+
+8.2  Empréstimo do dono                     Dono
+
+8.3  Reembolso ao dono                      Dono
+
+8.4  Distribuição de lucro                  Dono
+
+9.1  Transferência entre contas             Transferência
+
+18.7 Outras listas
+
+    Motivos de falha: descolou da mesa, entupimento, falta de filamento, queda de energia,
+    erro de modelo/fatiamento, umidade do filamento, camada deslocada, defeito no
+    acabamento, outro.
+    Densidade típica por material (editável): PLA 1,24; PETG 1,27; ABS 1,04; ASA 1,07; TPU
+    1,21; Nylon 1,14 (g/cm³).
+    Tipos de pós-processamento: remoção de suporte, lixa, pintura, montagem, inspeção.
+    Grupos de usuário: Dono, Produção, Leitura.
+
+19. Questões em aberto e evoluções futuras
+
+As decisões abaixo têm um padrão já assumido no documento; o sistema funciona com
+ele, mas o dono deve confirmar ou trocar antes da fase indicada.
+
+                                                                        Page 85 of 87
+Wabee — Especificação do Sistema de Gestão
+
+19.1 Decisões pendentes
+
+# Questão                                   Padrão assumido                    Decidir
+                                                                               até
+
+Q1 Como os R$ 1,20 por hora se              Taxa combinada até medir (US-2.5) Fase 7
+         dividem entre energia e
+         depreciação?
+
+Q2 Qual o valor à vista das compras         Juros = 0, marcado "não informado" Fase 3
+         iniciais (para separar juros)?
+
+Q3 O dinheiro do dono nas compras Aporte de capital                            Fase 3
+         iniciais é capital ou empréstimo a
+         devolver?
+
+Q4 A Wabee opera no CPF, MEI ou             Sem imposto sobre venda; DAS       Fase 5
+         outro enquadramento? Muda          como despesa fixa se MEI
+         impostos e despesas fixas
+
+Q5 Custo médio ponderado ou custo Custo médio; carretel só para                Fase 1
+
+por carretel (PEPS)?                        controle físico
+
+Q6 Falhas: custo separado ou                Separado, como "Custo de falhas"   Fase 4
+         absorvido pelas peças boas?
+
+Q7 Valorizar a hora de trabalho do          Não valorizado (camada trabalho =  Fase 7
+         dono? Quanto?                      0)
+
+Q8 Embalagem é custo do produto ou Despesa de venda, baixada na                Fase 5
+
+despesa de venda?                           entrega
+
+Q9 Ferramentas pequenas: despesa            Despesa na compra (categoria 4.6)  Fase 3
+         na compra ou depreciação?
+
+Q10 Qual impressora e qual fatiador a       Definir antes do importador        Fase 8
+         Wabee usa?
+
+Q11 Quais canais de venda estarão           Venda direta, Instagram/WhatsApp, Fase 5
+         ativos no início?                  feira
+
+Q12 Onde hospedar e quem mantém o VPS ou plataforma gerenciada com             Fase 0
+
+servidor?                                   banco gerenciado
+
+19.2 Evoluções futuras (fora da v1)
+
+    Nota fiscal: emissão de NF-e / NFS-e por integração com emissor, quando o
+    enquadramento exigir.
+
+                                                                               Page 86 of 87
+Wabee — Especificação do Sistema de Gestão
+
+    Marketplaces: importar pedidos e taxas reais da Shopee e do Mercado Livre por API.
+    Integração com a impressora: ler status, tempo real e consumo (OctoPrint,
+    Moonraker/Klipper ou o protocolo do fabricante) para finalizar impressões
+    automaticamente.
+    Orçamento automático: enviar um STL e receber estimativa de gramas, tempo e preço,
+    para responder clientes de encomenda.
+    Loja ou catálogo público com estoque em tempo real.
+    PWA instalável com câmera para ler os QR codes dos carretéis.
+    Várias impressoras com agenda e sugestão de qual usar por custo/hora.
+    Previsão de demanda a partir do histórico de vendas para sugerir produção e compras.
+    Multiusuário com turnos e produtividade por pessoa.
+
+                                                                                                                                                                                                                                          Page 87 of 87
+

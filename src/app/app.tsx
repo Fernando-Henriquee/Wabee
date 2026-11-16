@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from '@/features/auth/auth-context';
 import { ForgotPasswordPage } from '@/features/auth/forgot-password-page';
 import { LoginPage } from '@/features/auth/login-page';
 import { SetPasswordPage } from '@/features/auth/set-password-page';
+import { SignUpPage } from '@/features/auth/signup-page';
 import type { CompanySummary } from '@/data/company';
 import { CompanyGate } from '@/features/member/company-gate';
 import { MemberProvider, useMembership } from '@/features/member/member-context';
@@ -21,6 +22,7 @@ function PublicRoutes() {
   return (
     <Routes>
       <Route path="/entrar" element={<LoginPage />} />
+      <Route path="/criar-conta" element={<SignUpPage />} />
       <Route path="/recuperar-senha" element={<ForgotPasswordPage />} />
       <Route path="/redefinir-senha" element={<SetPasswordPage />} />
       <Route path="*" element={<Navigate to="/entrar" replace state={{ from: location.pathname }} />} />

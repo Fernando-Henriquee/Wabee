@@ -32,7 +32,8 @@ export async function wipeLocalData() {
 
 function urlRequestsPasswordSetup(): boolean {
   if (typeof window === 'undefined') return false;
-  return /type=(recovery|invite|signup)/.test(window.location.hash);
+  // Confirmação de cadastro (type=signup) não pede senha: a pessoa já escolheu a dela ao criar a conta.
+  return /type=(recovery|invite)/.test(window.location.hash);
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {

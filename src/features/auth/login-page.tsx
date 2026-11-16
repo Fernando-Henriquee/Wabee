@@ -31,7 +31,23 @@ export function LoginPage() {
   });
 
   return (
-    <AuthLayout title="Entrar" subtitle="Acesso restrito a contas convidadas." footer={<Link className="text-ink underline decoration-accent decoration-2 underline-offset-4" to="/recuperar-senha">Esqueci minha senha</Link>}>
+    <AuthLayout
+      title="Entrar"
+      subtitle="Entre na sua conta."
+      footer={
+        <span className="flex flex-col gap-2">
+          <Link className="text-ink underline decoration-accent decoration-2 underline-offset-4" to="/recuperar-senha">
+            Esqueci minha senha
+          </Link>
+          <span>
+            Ainda não tem conta?{' '}
+            <Link className="font-medium text-ink underline decoration-accent decoration-2 underline-offset-4" to="/criar-conta">
+              Criar conta
+            </Link>
+          </span>
+        </span>
+      }
+    >
       <form onSubmit={onSubmit} className="space-y-4" noValidate>
         <Field label="E-mail" error={form.formState.errors.email?.message}>
           <Input type="email" autoComplete="username" inputMode="email" autoFocus {...form.register('email')} />

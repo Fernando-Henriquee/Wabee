@@ -115,8 +115,11 @@ async function handleAuth(req: IncomingMessage, res: ServerResponse, url: URL) {
   const path = url.pathname.replace(/^\/auth\/v1/, '');
   try {
     if (path === '/health') return sendJson(res, 200, { name: 'GoTrue (local)', version: 'local' });
-    if (path === '/settings') return sendJson(res, 200, { external: { email: true }, disable_signup: true });
-    if (path === '/signup') throw new AuthError(422, 'signup_disabled', 'Signups not allowed for this instance');
+    if (path === '/settings') return sendJson(res, 200, { external: { email: true }, disable_signup: false });
+    if (path === '/signup' && req.method === 'POST') {
+      const body = parseJson(await readBody(req)) as { email?: string; password?: string; data?: Record<string, unknown> };
+      return sendJson(res, 200, await auth.signUp(body.email ?? '', body.password ?? '', body.data ?? {}));
+    }
     if (path === '/token' && req.method === 'POST') {
       const body = parseJson(await readBody(req)) as Record<string, string>;
       const grant = url.searchParams.get('grant_type');

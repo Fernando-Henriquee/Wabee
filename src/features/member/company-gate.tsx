@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { LogOut, Mail, Plus } from 'lucide-react';
-import { createContext, type FormEvent, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, type FormEvent, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { BrandMark } from '@/components/layout/brand';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader } from '@/components/ui/card';
@@ -8,6 +8,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { MembershipErrorScreen, OfflineWithoutDataScreen, Splash } from '@/app/screens';
+import { rpc } from '@/data/api';
 import {
   type CompanySummary,
   type PendingInvite,
@@ -20,6 +21,8 @@ import {
 import { useAuth } from '@/features/auth/auth-context';
 import { readRememberedCompanyId, rememberCompanyId, setActiveCompanyId } from '@/lib/active-company';
 import { useOnline } from '@/lib/connectivity';
+import { describeError } from '@/lib/errors';
+import { supabase } from '@/lib/supabase';
 
 interface CompanyState {
   companies: CompanySummary[];
@@ -49,6 +52,12 @@ export function CompanyGate({ userId, children }: { userId: string; children: (a
   const companies = useMyCompanies(userId);
   const invites = usePendingInvites(userId);
   const [selected, setSelected] = useState<string | null>(() => readRememberedCompanyId());
+  const { user } = useAuth();
+  // Quem criou a conta pela tela "Criar conta" informou o nome da empresa: ela é criada no primeiro acesso.
+  const pendingName = typeof user?.user_metadata?.company_name === 'string' ? user.user_metadata.company_name.trim() : '';
+  const [autoCreate, setAutoCreate] = useState<'idle' | 'creating' | 'done' | 'failed'>('idle');
+  const [autoError, setAutoError] = useState<string | null>(null);
+  const autoStarted = useRef(false);
 
   const list = useMemo(() => companies.data ?? [], [companies.data]);
   const active = list.find((c) => c.id === selected) ?? list[0] ?? null;
@@ -72,6 +81,25 @@ export function CompanyGate({ userId, children }: { userId: string; children: (a
     setSelected(id);
   }, []);
 
+  useEffect(() => {
+    if (!companies.isSuccess || list.length > 0 || !pendingName || autoStarted.current) return;
+    autoStarted.current = true; // uma tentativa só: nunca cria empresa em duplicidade
+    setAutoCreate('creating');
+    void (async () => {
+      try {
+        const id = await rpc<string>('create_company', { p_name: pendingName });
+        // O nome já foi usado: sai do cadastro para não criar outra empresa se a pessoa um dia ficar sem nenhuma.
+        await supabase.auth.updateUser({ data: { company_name: null } }).catch(() => undefined);
+        switchCompany(id);
+        await refresh();
+        setAutoCreate('done');
+      } catch (error) {
+        setAutoError(describeError(error));
+        setAutoCreate('failed');
+      }
+    })();
+  }, [companies.isSuccess, list.length, pendingName, switchCompany, refresh]);
+
   const value = useMemo<CompanyState | null>(
     () => (active ? { companies: list, active, invites: invites.data ?? [], switchCompany, refresh } : null),
     [list, active, invites.data, switchCompany, refresh],
@@ -80,7 +108,19 @@ export function CompanyGate({ userId, children }: { userId: string; children: (a
   if (companies.isPending) return online ? <Splash /> : <OfflineWithoutDataScreen />;
   if (companies.isError && !companies.data) return <MembershipErrorScreen error={companies.error} onRetry={() => void companies.refetch()} />;
   if (!active || !value) {
-    return <NoCompanyScreen invites={invites.data ?? []} onJoined={(id) => { switchCompany(id); void refresh(); }} />;
+    // A empresa do cadastro está sendo criada (ou acabou de ser): não pisca a tela de "vamos começar".
+    if ((pendingName && autoCreate !== 'failed') || autoCreate === 'creating' || autoCreate === 'done') return <Splash />;
+    return (
+      <NoCompanyScreen
+        invites={invites.data ?? []}
+        suggestedName={pendingName}
+        error={autoError}
+        onJoined={(id) => {
+          switchCompany(id);
+          void refresh();
+        }}
+      />
+    );
   }
   return <CompanyContext.Provider value={value}>{children(active)}</CompanyContext.Provider>;
 }
@@ -108,8 +148,8 @@ function InviteRow({ invite, onJoined, onDeclined }: { invite: PendingInvite; on
 }
 
 /** Formulário para criar uma empresa nova (a conta vira dona dela). */
-export function CreateCompanyForm({ onCreated }: { onCreated: (id: string) => void }) {
-  const [name, setName] = useState('');
+export function CreateCompanyForm({ onCreated, initialName = '' }: { onCreated: (id: string) => void; initialName?: string }) {
+  const [name, setName] = useState(initialName);
   const create = useCreateCompany(onCreated);
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -127,7 +167,17 @@ export function CreateCompanyForm({ onCreated }: { onCreated: (id: string) => vo
   );
 }
 
-function NoCompanyScreen({ invites, onJoined }: { invites: PendingInvite[]; onJoined: (companyId: string) => void }) {
+function NoCompanyScreen({
+  invites,
+  onJoined,
+  suggestedName = '',
+  error = null,
+}: {
+  invites: PendingInvite[];
+  onJoined: (companyId: string) => void;
+  suggestedName?: string;
+  error?: string | null;
+}) {
   const { user, signOut } = useAuth();
   const queryClient = useQueryClient();
   const reload = () => void queryClient.invalidateQueries({ queryKey: ['account'] });
@@ -139,6 +189,11 @@ function NoCompanyScreen({ invites, onJoined }: { invites: PendingInvite[]; onJo
         <p className="mt-2 text-sm text-ink-soft">
           A conta <strong>{user?.email}</strong> ainda não faz parte de nenhuma empresa. Aceite um convite ou crie a sua.
         </p>
+        {error ? (
+          <p role="alert" className="mt-3 rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
+            Não foi possível criar a empresa automaticamente: {error} Crie abaixo.
+          </p>
+        ) : null}
       </div>
       {invites.length > 0 ? (
         <Card>
@@ -152,7 +207,7 @@ function NoCompanyScreen({ invites, onJoined }: { invites: PendingInvite[]; onJo
       ) : null}
       <Card>
         <CardHeader title="Criar minha empresa" description="Seus dados ficam separados dos de qualquer outra empresa. Depois você pode convidar pessoas." />
-        <CreateCompanyForm onCreated={onJoined} />
+        <CreateCompanyForm onCreated={onJoined} initialName={suggestedName} />
       </Card>
       <div className="text-center">
         <Button variant="ghost" onClick={() => void signOut('local')}>

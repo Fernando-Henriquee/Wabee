@@ -210,6 +210,48 @@ describe('membros e convites', () => {
   });
 });
 
+describe('cadastro aberto (criar conta)', () => {
+  it('conta nova não vê nada de nenhuma empresa até criar a própria ou aceitar um convite', async () => {
+    const nova = await env.createUser('nova@x.test', 'Nova');
+    expect(await env.as(nova, (s) => s.rpc<unknown[]>('my_companies', {}))).toEqual([]);
+    for (const table of ['items', 'customers', 'settings', 'company_members', 'companies', 'audit_logs']) {
+      expect(await env.as(nova, (s) => s.query(`select * from public.${table}`)), table).toEqual([]);
+    }
+    expect(await env.as(nova, (s) => s.query(`select * from public.v_members`))).toEqual([]);
+    expect(await env.as(nova, (s) => s.query(`select id from public.profiles where id <> $1`, [nova]))).toEqual([]);
+    // Mesmo com o id de uma empresa na mão, sem convite não entra.
+    expect(await env.as(nova, (s) => s.query(`select * from public.items`), { company: companyA })).toEqual([]);
+    await expect(env.as(nova, (s) => s.rpc('save_item', { p_item: { kind: 'COMPONENT', name: 'x' } }), { company: companyA })).rejects.toThrow(/permissão/);
+    await expect(env.as(nova, (s) => s.rpc('invite_member', { p_email: 'a@b.test' }), { company: companyA })).rejects.toThrow(/dono/);
+    // Cria a própria empresa e só enxerga ela.
+    const propria = await env.as(nova, (s) => s.rpc<string>('create_company', { p_name: 'Empresa da Nova' }));
+    expect((await env.as(nova, (s) => s.rpc<Array<{ id: string; role: string }>>('my_companies', {}))).map((c) => [c.id, c.role])).toEqual([[propria, 'dono']]);
+    expect((await env.as(nova, (s) => s.query(`select * from public.items`))).length).toBe(0);
+    expect((await env.as(ana, (s) => s.query(`select * from public.items`), { company: companyA })).length).toBeGreaterThan(0);
+  });
+
+  it('convite só vale para e-mail confirmado (quem cadastra o e-mail de outra pessoa não entra)', async () => {
+    const id = await env.as(ana, (s) => s.rpc<string>('invite_member', { p_email: 'vitima@x.test' }), { company: companyA });
+    const impostor = await env.createUser('vitima@x.test', 'Impostor');
+    await env.admin().query(`update auth.users set email_confirmed_at = null where id = $1`, [impostor]);
+    expect(await env.as(impostor, (s) => s.rpc<unknown[]>('my_pending_invites', {}))).toEqual([]);
+    await expect(env.as(impostor, (s) => s.rpc('accept_invite', { p_invite_id: id }))).rejects.toThrow(/não encontrado/);
+    expect(await env.as(impostor, (s) => s.query(`select * from public.items`), { company: companyA })).toEqual([]);
+    // Depois de confirmar o e-mail (link recebido), o convite aparece e pode ser aceito.
+    await env.admin().query(`update auth.users set email_confirmed_at = now() where id = $1`, [impostor]);
+    expect(await env.as(impostor, (s) => s.rpc<unknown[]>('my_pending_invites', {}))).toHaveLength(1);
+  });
+
+  it('finanças pessoais: só adiciona quem divide empresa e a resposta não revela quem tem conta', async () => {
+    const solitaria = await env.createUser('solitaria@x.test', 'Solitária');
+    await env.as(ana, (s) => s.rpc('pf_ensure_space', {}));
+    const msg = /Não foi possível adicionar essa pessoa/;
+    await expect(env.as(ana, (s) => s.rpc('pf_add_member', { p_email: 'solitaria@x.test' }))).rejects.toThrow(msg);
+    await expect(env.as(ana, (s) => s.rpc('pf_add_member', { p_email: 'ninguem-existe@x.test' }))).rejects.toThrow(msg);
+    expect(solitaria).toBeTruthy();
+  });
+});
+
 describe('criar outra empresa', () => {
   it('quem já tem empresa cria uma segunda, com dados iniciais próprios e sem misturar', async () => {
     const segunda = await env.as(beto, (s) => s.rpc<string>('create_company', { p_name: 'Segunda do Beto' }), { company: companyB });

@@ -30,20 +30,25 @@ O script registra o que aplicou em `supabase_migrations.schema_migrations`, a me
 
 ## Autenticação
 
-Em **Authentication → Sign In / Providers**:
-- desative **Allow new users to sign up** (ninguém cria conta sozinho);
-- mantenha **Email** habilitado.
+Em **Authentication → Sign In / Providers → Email**:
+- ligue **Allow new users to sign up**: é o que libera a tela **Criar conta** do app;
+- mantenha **Confirm email** LIGADO. É obrigatório: os convites são entregues pelo e-mail da conta, e só e-mail confirmado recebe convite. Sem a confirmação, quem cadastrasse o e-mail de outra pessoa poderia entrar na empresa dela;
+- recomendado: em **Authentication → Attack Protection**, ative o CAPTCHA (Turnstile ou hCaptcha) para barrar cadastros automáticos, e mantenha os limites de e-mail padrão.
 
 Em **Authentication → URL Configuration**:
-- **Site URL**: o endereço do app na Vercel (ex.: `https://wabee.vercel.app`);
-- **Redirect URLs**: `https://<seu-dominio>/redefinir-senha` (e o domínio próprio, se houver).
+- **Site URL**: o endereço do app na Vercel;
+- **Redirect URLs**: `https://<seu-dominio>/entrar` (link de confirmação do cadastro) e `https://<seu-dominio>/redefinir-senha` (e o domínio próprio, se houver).
+
+### Criar conta
+
+Na tela de entrada, **Criar conta** pede nome, nome da empresa, e-mail e senha. A pessoa recebe um e-mail, confirma, entra, e o app cria a empresa dela automaticamente (ela vira dona). Uma conta nova não vê nada de nenhuma outra empresa: só entra em outra se alguém da empresa a convidar e ela aceitar. E-mail já cadastrado recebe a mesma resposta que um novo, para não revelar quais contas existem.
 
 ## Empresas, pessoas e convites
 
 O Wabee é multi-empresa: cada **empresa** é um espaço isolado, e quem não é membro dela não vê nada. Uma conta pode ter a sua empresa e ser convidada para outras (seletor no menu da conta).
 
 - **Perfis**: `dono` (acesso a tudo e gerencia pessoas: convida, remove, muda o perfil) e `membro` (acesso a tudo da empresa, sem gerir pessoas).
-- **Convite pelo app**: o dono abre **Configurações → Pessoas da empresa**, digita o e-mail e envia. Quem já tem conta vê o convite ao entrar (menu da conta → "Convites"); quem não tem recebe o e-mail do Supabase, cria a senha e aceita o convite. O cadastro público continua desligado (`enable_signup = false`).
+- **Convite pelo app**: o dono abre **Configurações → Pessoas da empresa**, digita o e-mail e envia. Quem já tem conta vê o convite ao entrar (menu da conta → "Convites"); quem não tem recebe o e-mail do Supabase, cria a senha e aceita o convite. Quem quiser criar conta por conta própria usa **Criar conta** na tela de entrada.
 - **Criar empresa**: qualquer conta logada cria a própria (menu da conta → "Nova empresa") e vira dona dela.
 
 ### Função de convite (uma vez por projeto)

@@ -29,6 +29,7 @@ export function AppRoutes() {
       {settingsRoutes()}
       {personalRoutes()}
       <Route path="/entrar" element={<NotFoundRedirect />} />
+      <Route path="/criar-conta" element={<NotFoundRedirect />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );

@@ -12,13 +12,16 @@ import { useAuth } from './auth-context';
 import { AuthLayout } from './auth-layout';
 import { PasswordInput } from './password-input';
 
+/** Regras da senha (as mesmas do Supabase: 8+ caracteres com letras e números). */
+export const passwordField = z
+  .string()
+  .min(8, 'Use pelo menos 8 caracteres.')
+  .regex(/[A-Za-z]/, 'Inclua pelo menos uma letra.')
+  .regex(/\d/, 'Inclua pelo menos um número.');
+
 export const passwordSchema = z
   .object({
-    password: z
-      .string()
-      .min(8, 'Use pelo menos 8 caracteres.')
-      .regex(/[A-Za-z]/, 'Inclua pelo menos uma letra.')
-      .regex(/\d/, 'Inclua pelo menos um número.'),
+    password: passwordField,
     confirm: z.string(),
   })
   .refine((values) => values.password === values.confirm, { message: 'As senhas não conferem.', path: ['confirm'] });
