@@ -5,7 +5,7 @@ import { isNetworkError } from './errors';
 
 /**
  * Cache de leitura para uso offline. Regras de proteção dos dados locais:
- *  - um cache por usuário (chave inclui o id), descartado se outro usuário entrar;
+ *  - um cache por usuário e por empresa (a chave inclui os dois), descartado se outro usuário entrar;
  *  - validade máxima de 72 h (depois disso nada é exibido offline);
  *  - somente consultas bem-sucedidas e marcadas como persistíveis;
  *  - apagado por completo no logout;
@@ -45,8 +45,9 @@ const safeStorage = {
   },
 };
 
-export function createUserPersister(userId: string) {
-  return createAsyncStoragePersister({ storage: safeStorage, key: `cache:${CACHE_VERSION}:${userId}`, throttleTime: 300 });
+/** `scope` identifica o dono do cache: a conta (`account:<usuário>`) ou `<usuário>:<empresa>`. */
+export function createUserPersister(scope: string) {
+  return createAsyncStoragePersister({ storage: safeStorage, key: `cache:${CACHE_VERSION}:${scope}`, throttleTime: 300 });
 }
 
 export function createAppQueryClient() {

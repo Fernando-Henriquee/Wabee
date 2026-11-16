@@ -9,6 +9,7 @@ let leitura: string;
 let producao: string;
 let direct: number;
 let pla: number;
+let company: string;
 
 const rid = () => crypto.randomUUID();
 /** O driver devolve colunas date como Date (meia-noite UTC). */
@@ -21,6 +22,7 @@ const create = (extra: Record<string, unknown> = {}) =>
 
 beforeAll(async () => {
   env = await TestEnv.create();
+  company = await env.defaultCompany();
   dono = await env.createMember('dono@wabee.test', 'dono');
   leitura = await env.createMember('leitura@wabee.test', 'leitura');
   producao = await env.createMember('producao@wabee.test', 'producao');
@@ -50,17 +52,17 @@ describe('anotar o orçamento (questionário)', () => {
     const customer = await env.as(dono, (s) => s.rpc<number>('save_customer', { p_customer: { name: 'Maria', phone: '(11) 98888-7777', instagram: 'maria.3d' } }));
     const id = await create({
       customer_id: customer, contact_name: null, size_text: '20 cm', color_text: 'vermelha e preta', qty: 2, source: 'INSTAGRAM',
-      desired_date: '2026-12-20', reference_links: 'https://exemplo.com/moto', reference_photo_paths: ['quotes/ref-1.jpg'],
+      desired_date: '2026-12-20', reference_links: 'https://exemplo.com/moto', reference_photo_paths: [`${company}/quotes/ref-1.jpg`],
     });
     expect(await quote(id)).toMatchObject({
       size_text: '20 cm', color_text: 'vermelha e preta', qty: 2, source: 'INSTAGRAM', display_name: 'Maria', phone: '(11) 98888-7777', instagram: 'maria.3d',
-      reference_photo_paths: ['quotes/ref-1.jpg'],
+      reference_photo_paths: [`${company}/quotes/ref-1.jpg`],
     });
   });
 
   it('recusa foto de referência fora da pasta quotes/, mais de 3 fotos e cliente inexistente', async () => {
     await expect(create({ reference_photo_paths: ['products/x.jpg'] })).rejects.toThrow(/inválido/);
-    await expect(create({ reference_photo_paths: ['quotes/1.jpg', 'quotes/2.jpg', 'quotes/3.jpg', 'quotes/4.jpg'] })).rejects.toThrow(/no máximo 3/);
+    await expect(create({ reference_photo_paths: [`${company}/quotes/1.jpg`, `${company}/quotes/2.jpg`, `${company}/quotes/3.jpg`, `${company}/quotes/4.jpg`] })).rejects.toThrow(/no máximo 3/);
     await expect(create({ customer_id: 99999 })).rejects.toThrow(/Cliente não encontrado/);
   });
 
@@ -70,10 +72,13 @@ describe('anotar o orçamento (questionário)', () => {
     expect(await quote(id)).toMatchObject({ item_wanted: 'Moto 3D esportiva', size_text: '15 cm', qty: 3 });
   });
 
-  it('só o dono grava; leitura vê, produção não vê', async () => {
-    await expect(env.as(leitura, (s) => s.rpc('save_quote', { p_quote: { item_wanted: 'x' } }))).rejects.toThrow(/permissão/);
+  it('todo membro grava e vê; quem não é da empresa não grava nem vê', async () => {
+    await expect(env.as(leitura, (s) => s.rpc('save_quote', { p_quote: { item_wanted: 'x' } }))).resolves.toBeDefined();
     expect((await env.as(leitura, (s) => s.query(`select 1 from public.v_quotes`))).length).toBeGreaterThan(0);
-    expect(await env.as(producao, (s) => s.query(`select 1 from public.v_quotes`))).toEqual([]);
+    expect((await env.as(producao, (s) => s.query(`select 1 from public.v_quotes`))).length).toBeGreaterThan(0);
+    const estranho = await env.createUser('estranho-orc@outra.test');
+    await expect(env.as(estranho, (s) => s.rpc('save_quote', { p_quote: { item_wanted: 'x' } }))).rejects.toThrow(/permissão/);
+    expect(await env.as(estranho, (s) => s.query(`select 1 from public.v_quotes`))).toEqual([]);
   });
 });
 
@@ -122,10 +127,10 @@ describe('valor combinado salvo e imagens da proposta', () => {
     const id = await create({ qty: 2 });
     const validUntil = await plusDays(5);
     await env.as(dono, (s) =>
-      s.rpc('save_quote_proposal', { p_quote_id: id, p_unit_price: 42.9, p_valid_until: validUntil, p_description: 'Acabamento liso', p_photo_paths: ['quotes/a.jpg', 'quotes/b.jpg'] }),
+      s.rpc('save_quote_proposal', { p_quote_id: id, p_unit_price: 42.9, p_valid_until: validUntil, p_description: 'Acabamento liso', p_photo_paths: [`${company}/quotes/a.jpg`, `${company}/quotes/b.jpg`] }),
     );
     const q = await quote(id);
-    expect(q).toMatchObject({ status: 'NOVO', proposal_description: 'Acabamento liso', proposal_photo_paths: ['quotes/a.jpg', 'quotes/b.jpg'], follow_up_at: null, quoted_at: null });
+    expect(q).toMatchObject({ status: 'NOVO', proposal_description: 'Acabamento liso', proposal_photo_paths: [`${company}/quotes/a.jpg`, `${company}/quotes/b.jpg`], follow_up_at: null, quoted_at: null });
     expect(n(q.quoted_unit_price as number)).toBe(42.9);
     expect(n(q.quoted_total as number)).toBe(85.8);
     expect((await events(id)).map((e) => e.kind)).toEqual(['NOTA']);
@@ -133,21 +138,21 @@ describe('valor combinado salvo e imagens da proposta', () => {
 
   it('valor em branco limpa o valor; sem lista de imagens mantém as atuais; recusa mais de 3 e valor zero', async () => {
     const id = await create();
-    await env.as(dono, (s) => s.rpc('save_quote_proposal', { p_quote_id: id, p_unit_price: 10, p_photo_paths: ['quotes/a.jpg'] }));
+    await env.as(dono, (s) => s.rpc('save_quote_proposal', { p_quote_id: id, p_unit_price: 10, p_photo_paths: [`${company}/quotes/a.jpg`] }));
     await env.as(dono, (s) => s.rpc('save_quote_proposal', { p_quote_id: id, p_unit_price: null }));
-    expect(await quote(id)).toMatchObject({ quoted_unit_price: null, proposal_photo_paths: ['quotes/a.jpg'] });
-    await expect(env.as(dono, (s) => s.rpc('save_quote_proposal', { p_quote_id: id, p_photo_paths: ['quotes/1.jpg', 'quotes/2.jpg', 'quotes/3.jpg', 'quotes/4.jpg'] }))).rejects.toThrow(/no máximo 3/);
+    expect(await quote(id)).toMatchObject({ quoted_unit_price: null, proposal_photo_paths: [`${company}/quotes/a.jpg`] });
+    await expect(env.as(dono, (s) => s.rpc('save_quote_proposal', { p_quote_id: id, p_photo_paths: [`${company}/quotes/1.jpg`, `${company}/quotes/2.jpg`, `${company}/quotes/3.jpg`, `${company}/quotes/4.jpg`] }))).rejects.toThrow(/no máximo 3/);
     await expect(env.as(dono, (s) => s.rpc('save_quote_proposal', { p_quote_id: id, p_unit_price: 0 }))).rejects.toThrow(/maior que zero/);
-    await expect(env.as(leitura, (s) => s.rpc('save_quote_proposal', { p_quote_id: id, p_unit_price: 5 }))).rejects.toThrow(/permissão/);
+    await expect(env.as(leitura, (s) => s.rpc('save_quote_proposal', { p_quote_id: id, p_unit_price: 5 }))).resolves.toBeDefined();
   });
 
   it('send_quote leva as imagens da proposta (ou mantém as já salvas)', async () => {
     const id = await create();
-    await env.as(dono, (s) => s.rpc('save_quote_proposal', { p_quote_id: id, p_unit_price: 30, p_photo_paths: ['quotes/a.jpg'] }));
+    await env.as(dono, (s) => s.rpc('save_quote_proposal', { p_quote_id: id, p_unit_price: 30, p_photo_paths: [`${company}/quotes/a.jpg`] }));
     await env.as(dono, (s) => s.rpc('send_quote', { p_quote_id: id, p_unit_price: 30 }));
-    expect((await quote(id)).proposal_photo_paths).toEqual(['quotes/a.jpg']);
-    await env.as(dono, (s) => s.rpc('send_quote', { p_quote_id: id, p_unit_price: 30, p_photo_paths: ['quotes/b.jpg', 'quotes/c.jpg'] }));
-    expect(await quote(id)).toMatchObject({ status: 'PROPOSTA_ENVIADA', proposal_photo_paths: ['quotes/b.jpg', 'quotes/c.jpg'] });
+    expect((await quote(id)).proposal_photo_paths).toEqual([`${company}/quotes/a.jpg`]);
+    await env.as(dono, (s) => s.rpc('send_quote', { p_quote_id: id, p_unit_price: 30, p_photo_paths: [`${company}/quotes/b.jpg`, `${company}/quotes/c.jpg`] }));
+    expect(await quote(id)).toMatchObject({ status: 'PROPOSTA_ENVIADA', proposal_photo_paths: [`${company}/quotes/b.jpg`, `${company}/quotes/c.jpg`] });
   });
 });
 
@@ -283,7 +288,7 @@ describe('funil e resumo (Visão geral)', () => {
     const summary = await env.as(dono, (s) => s.rpc<{ open: number; to_analyze: number; due: number; overdue: number; open_value: number }>('quote_summary', {}));
     expect(summary).toMatchObject({ open: 1, to_analyze: 1, due: 1, overdue: 1 });
     expect(n(summary.open_value)).toBe(0);
-    await expect(env.as(producao, (s) => s.rpc('quote_summary', {}))).rejects.toThrow(/permissão/);
+    await expect(env.as(producao, (s) => s.rpc('quote_summary', {}))).resolves.toBeDefined();
   });
 });
 
@@ -295,7 +300,8 @@ describe('PIX e reset', () => {
     expect(await env.as(dono, (s) => s.one(`select pix_key, pix_key_type, pix_holder from public.settings`))).toEqual({ pix_key: '11999990000', pix_key_type: 'TELEFONE', pix_holder: 'Wabee 3D' });
     await env.as(dono, (s) => s.rpc('save_settings', { p_settings: { pix_key: '' } }));
     expect((await env.as(dono, (s) => s.one<{ pix_key: string | null }>(`select pix_key from public.settings`))).pix_key).toBeNull();
-    await expect(env.as(leitura, (s) => s.rpc('save_settings', { p_settings: { pix_key: 'x' } }))).rejects.toThrow(/permissão/);
+    const estranho = await env.createUser('estranho-pix@outra.test');
+    await expect(env.as(estranho, (s) => s.rpc('save_settings', { p_settings: { pix_key: 'x' } }))).rejects.toThrow(/permissão/);
     await expect(env.as(dono, (s) => s.rpc('save_settings', { p_settings: { pix_key_type: 'OUTRO' } }))).rejects.toThrow();
   });
 

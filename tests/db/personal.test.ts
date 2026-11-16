@@ -85,9 +85,10 @@ describe('espaço e privacidade', () => {
     expect(cats.filter((c) => c.kind === 'ENTRADA').map((c) => c.name).sort()).toEqual(['Extra', 'Salário']);
   });
 
-  it('produção e leitura não usam a aba pessoal', async () => {
-    await expect(env.as(producao, (s) => s.rpc('pf_ensure_space', {}))).rejects.toThrow(/permissão/);
-    await expect(env.as(leitura, (s) => s.rpc('pf_ensure_space', {}))).rejects.toThrow(/permissão/);
+  it('a aba pessoal é da conta: funciona para qualquer pessoa logada, com ou sem empresa', async () => {
+    const semEmpresa = await env.createUser('sem-empresa@wabee.test');
+    await expect(env.as(semEmpresa, (s) => s.rpc('pf_ensure_space', {}))).resolves.toBeDefined();
+    expect(await rows(semEmpresa, `select * from public.v_pf_transactions`)).toEqual([]);
     expect(await rows(producao, `select * from public.pf_transactions`)).toEqual([]);
     expect(await rows(leitura, `select * from public.v_pf_transactions`)).toEqual([]);
   });
@@ -99,9 +100,8 @@ describe('espaço e privacidade', () => {
     await expect(budget(bia)).rejects.toThrow(/Abra a aba Pessoal/);
   });
 
-  it('o convite só vale para dono ativo que não está em outro espaço, e o espaço comporta duas pessoas', async () => {
-    await expect(env.as(ana, (s) => s.rpc('pf_add_member', { p_email: 'producao@wabee.test' }))).rejects.toThrow(/perfil Dono/);
-    await expect(env.as(ana, (s) => s.rpc('pf_add_member', { p_email: 'ninguem@wabee.test' }))).rejects.toThrow(/perfil Dono/);
+  it('o convite só vale para conta existente que não está em outro espaço, e o espaço comporta duas pessoas', async () => {
+    await expect(env.as(ana, (s) => s.rpc('pf_add_member', { p_email: 'ninguem@wabee.test' }))).rejects.toThrow(/precisa já ter uma conta/);
     await env.as(cris, (s) => s.rpc('pf_ensure_space', {}));
     await expect(env.as(ana, (s) => s.rpc('pf_add_member', { p_email: 'cris@wabee.test' }))).rejects.toThrow(/já usa um espaço/);
     await env.as(ana, (s) => s.rpc('pf_add_member', { p_email: 'bia@wabee.test' }));

@@ -1,25 +1,28 @@
 import { useQuery } from '@tanstack/react-query';
 import { createContext, type ReactNode, useContext, useMemo } from 'react';
 import { unwrap } from '@/data/api';
+import type { CompanySummary } from '@/data/company';
 import { todayIn } from '@/lib/dates';
 import type { PixKeyType } from '@/lib/pix';
 import { supabase } from '@/lib/supabase';
 
-export type Role = 'dono' | 'producao' | 'leitura';
+export type Role = 'dono' | 'membro';
 
 /**
- * O que cada perfil pode fazer na interface (seção 1.3). A proteção real está no
- * banco: as RPCs conferem o perfil e a RLS esconde valores de quem não pode vê-los.
+ * O que cada perfil pode fazer na interface. Todo membro da empresa tem acesso a tudo; só o dono
+ * gerencia pessoas (convites, remoção, perfis). A proteção real está no banco: a RLS limita tudo
+ * à empresa ativa e as RPCs de gestão conferem o dono.
  */
-export type Capability = 'write' | 'production' | 'costs' | 'settings' | 'audit';
+export type Capability = 'write' | 'production' | 'costs' | 'settings' | 'audit' | 'members';
+
+const BASE_CAPABILITIES: Capability[] = ['write', 'production', 'costs', 'settings', 'audit'];
 
 const CAPABILITIES: Record<Role, Capability[]> = {
-  dono: ['write', 'production', 'costs', 'settings', 'audit'],
-  producao: ['production'],
-  leitura: ['costs', 'audit'],
+  dono: [...BASE_CAPABILITIES, 'members'],
+  membro: BASE_CAPABILITIES,
 };
 
-export const ROLE_LABELS: Record<Role, string> = { dono: 'Dono', producao: 'Produção', leitura: 'Somente leitura' };
+export const ROLE_LABELS: Record<Role, string> = { dono: 'Dono', membro: 'Membro' };
 
 export interface AppSettings {
   company_name: string;
@@ -61,28 +64,26 @@ export interface Membership {
   user_id: string;
   role: Role;
   active: boolean;
+  company: CompanySummary;
   settings: AppSettings;
 }
 
-/** Perfil de acesso do usuário logado e as configurações da empresa. */
-export function useMembership(userId: string | undefined) {
+/** Configurações da empresa ativa (a RLS devolve só a linha dela) e o papel da pessoa nela. */
+export function useMembership(userId: string | undefined, company: CompanySummary) {
   return useQuery({
-    queryKey: ['w', 'membership', userId],
+    queryKey: ['w', 'membership', userId, company.id],
     enabled: Boolean(userId),
     queryFn: async (): Promise<Membership | null> => {
-      const members = await unwrap<Array<{ user_id: string; role: Role; active: boolean }>>(
-        supabase.from('app_members').select('user_id,role,active').eq('user_id', userId!),
-      );
-      const member = members[0];
-      if (!member || !member.active) return null;
       const settings = await unwrap<AppSettings[]>(supabase.from('settings').select('*'));
-      return { ...member, settings: settings[0]! };
+      if (!settings[0]) return null;
+      return { user_id: userId!, role: company.role, active: true, company, settings: settings[0] };
     },
   });
 }
 
 interface MemberState {
   role: Role;
+  company: CompanySummary;
   settings: AppSettings;
   can: (capability: Capability) => boolean;
   /** Hoje no fuso da empresa (AAAA-MM-DD). */
@@ -95,6 +96,7 @@ export function MemberProvider({ membership, children }: { membership: Membershi
   const value = useMemo<MemberState>(
     () => ({
       role: membership.role,
+      company: membership.company,
       settings: membership.settings,
       can: (capability) => CAPABILITIES[membership.role].includes(capability),
       today: () => todayIn(membership.settings.timezone),

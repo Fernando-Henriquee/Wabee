@@ -42,26 +42,27 @@ test('dono abre todas as telas sem erro', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test('produção não vê valores nem o financeiro', async ({ page }) => {
+test('membro tem acesso a tudo da empresa, inclusive o financeiro', async ({ page }) => {
   const errors = collectErrors(page);
-  await login(page, 'producao@local.test');
-  for (const path of ['/producao', '/estoque', '/produtos/1', '/estoque/carreteis']) {
+  await login(page, 'membro@local.test');
+  for (const path of ['/producao', '/estoque', '/produtos', '/financeiro']) {
     await page.goto(path);
-    await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible({ timeout: 20_000 });
-    await page.waitForLoadState('networkidle');
-    await expect(page.locator('main'), path).not.toContainText('R$');
+    await expect(page.getByRole('heading', { level: 1 }).first(), path).toBeVisible({ timeout: 20_000 });
   }
-  await page.goto('/financeiro');
-  await expect(page.getByText('Sem acesso')).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Financeiro' })).toHaveCount(0);
+  await expect(page.getByText('Sem acesso')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Financeiro' }).first()).toBeVisible();
   expect(errors).toEqual([]);
 });
 
-test('leitura vê valores mas não tem botões de lançamento', async ({ page }) => {
-  await login(page, 'leitura@local.test');
-  await page.goto('/financeiro/despesas');
-  await expect(page.getByRole('heading', { name: 'Despesas' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Nova despesa' })).toHaveCount(0);
+test('quem é de outra empresa não vê nada da empresa do dono', async ({ page }) => {
+  const errors = collectErrors(page);
+  await login(page, 'outra@local.test');
+  await page.goto('/estoque');
+  await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible({ timeout: 20_000 });
+  await page.waitForLoadState('networkidle');
+  await expect(page.locator('main')).not.toContainText('Abelha');
   await page.goto('/produtos');
-  await expect(page.getByRole('link', { name: /Novo produto/ })).toHaveCount(0);
+  await page.waitForLoadState('networkidle');
+  await expect(page.locator('main')).not.toContainText('Abelha');
+  expect(errors).toEqual([]);
 });

@@ -1,26 +1,28 @@
-import { KeyRound, Lock, Pencil } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { Lock, Mail, Pencil, Send, Trash2, UserMinus } from 'lucide-react';
+import { type FormEvent, useMemo, useState } from 'react';
 import { Page, PageHeader } from '@/components/layout/page';
 import { type Column, DataTable } from '@/components/shared/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader } from '@/components/ui/card';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Field } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
 import { ErrorState, LoadingBlock } from '@/components/ui/states';
+import { useCancelInvite, useInviteMember, useRemoveMember, useSentInvites } from '@/data/company';
 import { type MemberRow, useMembers, useSetMemberRole } from '@/data/settings';
 import { useAuth } from '@/features/auth/auth-context';
 import { type Role, ROLE_LABELS, useMember } from '@/features/member/member-context';
 import { formatDateTimeBR } from '@/lib/dates';
 import { describeError } from '@/lib/errors';
-import { BackLink, ChoiceCards, FormError, NoAccess, ToggleRow } from './bits';
+import { BackLink, ChoiceCards, FormError } from './bits';
 
 const ROLE_DESCRIPTIONS: Record<Role, string> = {
-  dono: 'Tudo: vendas, compras, financeiro, configurações e auditoria.',
-  producao: 'Impressões e consulta de estoque, sem valores financeiros.',
-  leitura: 'Vê relatórios, valores e auditoria, sem alterar nada.',
+  dono: 'Acesso a tudo e gerencia as pessoas: convida, remove e muda o perfil de cada uma.',
+  membro: 'Acesso a tudo da empresa: vendas, compras, estoque, financeiro e configurações. Não gerencia pessoas.',
 };
 
-const ROLE_TONES: Record<Role, 'brand' | 'accent' | 'info'> = { dono: 'brand', producao: 'accent', leitura: 'info' };
+const ROLE_TONES: Record<Role, 'brand' | 'accent'> = { dono: 'brand', membro: 'accent' };
 
 function memberName(member: MemberRow) {
   return member.display_name?.trim() || member.email || 'Sem nome';
@@ -28,10 +30,10 @@ function memberName(member: MemberRow) {
 
 function MemberDialog({ member, onClose }: { member: MemberRow; onClose: () => void }) {
   const [role, setRole] = useState<Role>(member.role);
-  const [active, setActive] = useState(member.active);
   const [error, setError] = useState<string | null>(null);
   const save = useSetMemberRole(onClose);
-  const changed = role !== member.role || active !== member.active;
+  const remove = useRemoveMember();
+  const [confirmRemove, setConfirmRemove] = useState(false);
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent
@@ -43,15 +45,14 @@ function MemberDialog({ member, onClose }: { member: MemberRow; onClose: () => v
               Cancelar
             </Button>
             <Button
-              variant={active ? 'primary' : 'danger'}
-              disabled={!changed}
+              disabled={role === member.role}
               loading={save.isPending}
               onClick={() => {
                 setError(null);
-                save.mutate({ userId: member.user_id, role, active }, { onError: (e) => setError(describeError(e)) });
+                save.mutate({ userId: member.user_id, role, active: true }, { onError: (e) => setError(describeError(e)) });
               }}
             >
-              {active ? 'Salvar acesso' : 'Desativar acesso'}
+              Salvar perfil
             </Button>
           </>
         }
@@ -62,18 +63,35 @@ function MemberDialog({ member, onClose }: { member: MemberRow; onClose: () => v
             legend="Perfil"
             value={role}
             onChange={setRole}
-            columns={3}
+            columns={2}
             options={(Object.keys(ROLE_LABELS) as Role[]).map((r) => ({ value: r, label: ROLE_LABELS[r], description: ROLE_DESCRIPTIONS[r] }))}
           />
           {role === 'dono' && member.role !== 'dono' ? (
-            <p className="rounded-lg bg-warning-soft px-3 py-2 text-sm text-warning">Dono vê e altera tudo, inclusive valores, contas e as permissões das outras pessoas.</p>
+            <p className="rounded-lg bg-warning-soft px-3 py-2 text-sm text-warning">Quem é dono também convida, remove e muda o perfil das outras pessoas.</p>
           ) : null}
-          <ToggleRow
-            checked={active}
-            onChange={setActive}
-            label="Acesso ativo"
-            description="Desativado: a pessoa não entra mais no sistema, mas o histórico dela continua na auditoria. Dá para reativar depois."
-          />
+          <div className="rounded-lg border border-danger/30 bg-danger-soft/40 p-3">
+            <p className="text-sm text-ink">Remover da empresa</p>
+            <p className="mt-0.5 text-xs text-muted">A pessoa perde o acesso a todos os dados da empresa. O histórico dela continua na auditoria.</p>
+            {confirmRemove ? (
+              <div className="mt-2 flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => setConfirmRemove(false)}>
+                  Manter
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  loading={remove.isPending}
+                  onClick={() => remove.mutate(member.user_id, { onSuccess: onClose, onError: (e) => setError(describeError(e)) })}
+                >
+                  <UserMinus /> Confirmar remoção
+                </Button>
+              </div>
+            ) : (
+              <Button variant="outline" size="sm" className="mt-2" onClick={() => setConfirmRemove(true)}>
+                <UserMinus /> Remover pessoa
+              </Button>
+            )}
+          </div>
           <FormError>{error}</FormError>
         </div>
       </DialogContent>
@@ -81,37 +99,53 @@ function MemberDialog({ member, onClose }: { member: MemberRow; onClose: () => v
   );
 }
 
-function HowToAdd() {
+function InviteCard() {
+  const { company } = useMember();
+  const [email, setEmail] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const invites = useSentInvites(true);
+  const invite = useInviteMember(() => setEmail(''));
+  const cancel = useCancelInvite();
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    invite.mutate({ email: email.trim(), companyId: company.id }, { onError: (e) => setError(describeError(e)) });
+  };
+
   return (
     <Card>
-      <CardHeader title="Como dar acesso a uma pessoa" description="Novas contas são criadas no Supabase (por segurança, não pelo app)." />
-      <ol className="space-y-3 p-4 text-sm text-ink-soft">
-        <li className="flex gap-3">
-          <span className="grid size-7 shrink-0 place-items-center rounded-full bg-accent-soft text-xs font-bold text-accent-ink">1</span>
-          <span>
-            <strong className="text-ink">Convide pelo e-mail.</strong> No painel do Supabase, abra <em>Authentication → Users → Add user → Send invitation</em> e informe o
-            e-mail da pessoa. Ela recebe um link e cria a própria senha.
-          </span>
-        </li>
-        <li className="flex gap-3">
-          <span className="grid size-7 shrink-0 place-items-center rounded-full bg-accent-soft text-xs font-bold text-accent-ink">2</span>
-          <span>
-            <strong className="text-ink">Dê o perfil.</strong> No computador do projeto, rode{' '}
-            <code className="rounded bg-subtle px-1.5 py-0.5 text-xs text-ink">npm run member:add -- email@exemplo.com producao "Nome"</code> (perfis:{' '}
-            <code className="text-xs">dono</code>, <code className="text-xs">producao</code> ou <code className="text-xs">leitura</code>).
-          </span>
-        </li>
-        <li className="flex gap-3">
-          <span className="grid size-7 shrink-0 place-items-center rounded-full bg-accent-soft text-xs font-bold text-accent-ink">3</span>
-          <span>
-            <strong className="text-ink">Pronto.</strong> A pessoa aparece nesta lista e você troca o perfil ou desativa o acesso por aqui. Até receber um perfil, quem entra vê a tela
-            “Conta sem acesso”.
-          </span>
-        </li>
-      </ol>
-      <p className="flex items-start gap-2 border-t border-line px-4 py-3 text-xs text-muted">
-        <KeyRound className="mt-0.5 size-3.5 shrink-0" aria-hidden /> Nunca compartilhe senhas nem chaves do Supabase: cada pessoa tem a própria conta, e tudo o que ela faz fica na auditoria.
-      </p>
+      <CardHeader
+        title="Convidar uma pessoa"
+        description="Quem entrar vê e edita tudo desta empresa. Quem não for convidado não vê nada. Se a pessoa ainda não tem conta, recebe um e-mail para criar a senha."
+      />
+      <form onSubmit={submit} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-end">
+        <Field label="E-mail da pessoa" className="flex-1">
+          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="pessoa@exemplo.com" autoComplete="off" />
+        </Field>
+        <Button type="submit" loading={invite.isPending} disabled={!email.trim()}>
+          <Send /> Enviar convite
+        </Button>
+      </form>
+      {error ? (
+        <div className="px-4 pb-3">
+          <FormError>{error}</FormError>
+        </div>
+      ) : null}
+      {invites.data && invites.data.length > 0 ? (
+        <ul className="divide-y divide-line border-t border-line">
+          {invites.data.map((i) => (
+            <li key={i.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+              <Mail className="size-4 shrink-0 text-muted" aria-hidden />
+              <span className="min-w-0 flex-1 truncate">{i.email}</span>
+              <Badge tone="info">convite pendente</Badge>
+              <Button variant="ghost" size="icon" aria-label={`Cancelar convite para ${i.email}`} loading={cancel.isPending} onClick={() => cancel.mutate(i.id)}>
+                <Trash2 />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </Card>
   );
 }
@@ -121,6 +155,7 @@ export function PeoplePage() {
   const { user } = useAuth();
   const members = useMembers();
   const [editing, setEditing] = useState<MemberRow | null>(null);
+  const isOwner = can('members');
 
   const rows = useMemo(
     () => [...(members.data ?? [])].sort((a, b) => Number(b.active) - Number(a.active) || memberName(a).localeCompare(memberName(b), 'pt-BR')),
@@ -143,16 +178,15 @@ export function PeoplePage() {
         ),
       },
       { key: 'role', header: 'Perfil', sortValue: (r) => r.role, cell: (r) => <Badge tone={ROLE_TONES[r.role]}>{ROLE_LABELS[r.role]}</Badge> },
-      { key: 'active', header: 'Situação', sortValue: (r) => Number(r.active), cell: (r) => (r.active ? <Badge tone="success">ativo</Badge> : <Badge tone="danger">desativado</Badge>) },
       { key: 'since', header: 'Desde', sortValue: (r) => r.created_at, cell: (r) => <span className="num text-muted">{formatDateTimeBR(r.created_at, settings.timezone).slice(0, 10)}</span> },
       {
         key: 'actions',
         header: '',
         align: 'right',
         cell: (r) =>
-          r.user_id === user?.id ? (
+          !isOwner ? null : r.user_id === user?.id ? (
             <span className="inline-flex items-center gap-1 text-xs text-muted" title="Você não pode alterar o próprio acesso">
-              <Lock className="size-3.5" aria-hidden /> bloqueado
+              <Lock className="size-3.5" aria-hidden /> você
             </span>
           ) : (
             <Button variant="outline" size="sm" onClick={() => setEditing(r)}>
@@ -161,15 +195,14 @@ export function PeoplePage() {
           ),
       },
     ],
-    [user?.id, settings.timezone],
+    [user?.id, settings.timezone, isOwner],
   );
-
-  if (!can('settings')) return <NoAccess title="Pessoas com acesso" />;
 
   return (
     <Page className="max-w-5xl">
-      <PageHeader back={<BackLink />} title="Pessoas com acesso" description="Quem entra no sistema e o que cada perfil pode fazer." />
+      <PageHeader back={<BackLink />} title="Pessoas da empresa" description="Quem entra nesta empresa e o que cada perfil pode fazer." />
       <div className="space-y-5">
+        {isOwner ? <InviteCard /> : null}
         {members.isError ? (
           <ErrorState error={members.error} onRetry={() => void members.refetch()} />
         ) : !members.data ? (
@@ -179,7 +212,6 @@ export function PeoplePage() {
             rows={rows}
             columns={columns}
             getRowId={(r) => r.user_id}
-            rowClassName={(r) => (r.active ? undefined : 'opacity-70')}
             emptyTitle="Nenhuma pessoa encontrada"
             mobileCard={(r) => (
               <div className="flex items-center gap-3">
@@ -194,21 +226,18 @@ export function PeoplePage() {
                   <p className="truncate text-xs text-muted">{r.email}</p>
                   <p className="mt-1 flex flex-wrap gap-1.5">
                     <Badge tone={ROLE_TONES[r.role]}>{ROLE_LABELS[r.role]}</Badge>
-                    {r.active ? null : <Badge tone="danger">desativado</Badge>}
                   </p>
                 </div>
-                {r.user_id === user?.id ? (
-                  <Lock className="size-4 shrink-0 text-muted" aria-label="Você não pode alterar o próprio acesso" />
-                ) : (
+                {isOwner && r.user_id !== user?.id ? (
                   <Button variant="outline" size="icon" aria-label={`Alterar acesso de ${memberName(r)}`} onClick={() => setEditing(r)}>
                     <Pencil />
                   </Button>
-                )}
+                ) : null}
               </div>
             )}
           />
         )}
-        <section aria-label="Perfis" className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <section aria-label="Perfis" className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {(Object.keys(ROLE_LABELS) as Role[]).map((r) => (
             <div key={r} className="rounded-xl border border-line bg-panel px-3 py-2.5">
               <Badge tone={ROLE_TONES[r]}>{ROLE_LABELS[r]}</Badge>
@@ -216,7 +245,6 @@ export function PeoplePage() {
             </div>
           ))}
         </section>
-        <HowToAdd />
       </div>
       {editing ? <MemberDialog key={editing.user_id} member={editing} onClose={() => setEditing(null)} /> : null}
     </Page>

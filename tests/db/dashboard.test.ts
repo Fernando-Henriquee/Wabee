@@ -141,7 +141,7 @@ describe('Visão geral (US-8.1)', () => {
     expect(n((await goal('direct')).breakeven_revenue)).toBe(125);
     await env.as(dono, (s) => s.rpc('save_settings', { p_settings: { monthly_fixed_expenses: null, monthly_profit_target: '0' } }));
     expect((await goal('operational')).expenses.source).toBe('MES');
-    await expect(env.as(producao, (s) => s.rpc('monthly_goal', { p_layer: 'operational' }))).rejects.toThrow(/permissão/);
+    await expect(env.as(producao, (s) => s.rpc('monthly_goal', { p_layer: 'operational' }))).resolves.toBeDefined();
   });
 
   it('análises extras: comparação, mix, entregas, carteira, retirada, alertas e resumo', async () => {
@@ -194,7 +194,7 @@ describe('Visão geral (US-8.1)', () => {
     const week = await env.as(dono, (s) => s.rpc<{ current: Metrics; best_product: { name: string } }>('weekly_summary', {}));
     expect(n(week.current.net_revenue)).toBe(15);
     expect(week.best_product.name).toContain('Abelha');
-    await expect(env.as(producao, (s) => s.rpc('owner_withdrawal', {}))).rejects.toThrow(/permissão/);
+    await expect(env.as(producao, (s) => s.rpc('owner_withdrawal', {}))).resolves.toBeDefined();
   });
 
   it('caixa projetado separa as parcelas pagas pelo dono (US-7.10)', async () => {
@@ -204,15 +204,15 @@ describe('Visão geral (US-8.1)', () => {
     expect(proj.months.reduce((sum, m) => sum + n(m.owner_paid), 0)).toBeGreaterThan(0);
   });
 
-  it('alertas e "agora na impressora" funcionam para a produção, sem valores', async () => {
+  it('alertas, "agora na impressora" e visão geral funcionam para qualquer membro', async () => {
     const alerts = await env.as(producao, (s) => s.rpc<Array<{ kind: string }>>('dashboard_alerts', {}));
-    expect(alerts.every((a) => a.kind !== 'installment')).toBe(true);
+    expect(Array.isArray(alerts)).toBe(true);
     const now = await env.as(producao, (s) => s.rpc<{ printing: unknown[] }>('now_printing', {}));
     expect(now.printing).toEqual([]);
-    await expect(env.as(producao, (s) => s.rpc('dashboard_overview', { p_from: '2026-10-01', p_to: '2026-10-31' }))).rejects.toThrow(/permissão/);
+    await expect(env.as(producao, (s) => s.rpc('dashboard_overview', { p_from: '2026-10-01', p_to: '2026-10-31' }))).resolves.toBeDefined();
     const items = await env.as(producao, (s) => s.query<{ qty_on_hand: string; avg_cost_total: string | null }>(`select qty_on_hand, avg_cost_total from public.v_items where id = $1`, [abelhaItem]));
     expect(n(items[0]!.qty_on_hand)).toBe(7);
-    expect(items[0]!.avg_cost_total).toBeNull();
+    expect(items[0]!.avg_cost_total).not.toBeNull();
   });
 
   it('integridade do estoque e fechamento de mês (US-7.12)', async () => {

@@ -11,9 +11,9 @@ import type { LocalDatabase } from './db';
 export const LOCAL_PASSWORD = 'senha-local-123';
 
 export const LOCAL_ACCOUNTS = [
-  { email: 'dono@local.test', name: 'Dono', role: 'dono', description: 'dono — acesso total' },
-  { email: 'producao@local.test', name: 'Ajudante', role: 'producao', description: 'produção — sem valores financeiros' },
-  { email: 'leitura@local.test', name: 'Contador', role: 'leitura', description: 'somente leitura' },
+  { email: 'dono@local.test', name: 'Dono', role: 'dono', description: 'dono da empresa local — acesso total e gerencia pessoas' },
+  { email: 'membro@local.test', name: 'Ajudante', role: 'membro', description: 'membro da mesma empresa — acesso a tudo, sem gerir pessoas' },
+  { email: 'outra@local.test', name: 'Outra pessoa', role: 'dono', company: 'outra', description: 'dona de OUTRA empresa — não vê nada da empresa do dono' },
 ] as const;
 
 export async function seedLocal(db: LocalDatabase, auth: LocalAuth, options: { demo: boolean }) {
@@ -23,11 +23,24 @@ export async function seedLocal(db: LocalDatabase, auth: LocalAuth, options: { d
   }
   await db.admin(async (pg) => {
     await pg.exec(`create table if not exists local_meta.seed (key text primary key, value text not null)`);
+    const main = (await pg.query<{ id: string }>(`select id from public.companies order by created_at limit 1`)).rows[0]!.id;
     for (const account of LOCAL_ACCOUNTS) {
-      await pg.query(`insert into public.app_members (user_id, role) values ($1, $2) on conflict (user_id) do nothing`, [ids[account.email], account.role]);
+      if ('company' in account) continue;
+      await pg.query(`insert into public.company_members (company_id, user_id, role) values ($1, $2, $3) on conflict do nothing`, [main, ids[account.email], account.role]);
     }
-    await pg.query(`update public.settings set company_name = 'Wabee (ambiente local)' where id and company_name = 'Wabee'`);
   });
+  // O nome da empresa do dono muda pela mesma RPC do app (grava também a auditoria como ele).
+  await db.asRole({ sub: ids['dono@local.test']!, role: 'authenticated' }, (pg) => pg.query(`select public.rename_company('Wabee (ambiente local)')`));
+  // Empresas próprias: criadas pela mesma RPC do app (a pessoa vira dona e recebe os dados iniciais).
+  for (const account of LOCAL_ACCOUNTS) {
+    if (!('company' in account)) continue;
+    // O seed roda a cada partida do emulador: cria a empresa só se a conta ainda não tem nenhuma.
+    const already = await db.admin(async (pg) => (await pg.query(`select 1 from public.company_members where user_id = $1`, [ids[account.email]])).rows.length > 0);
+    if (already) continue;
+    await db.asRole({ sub: ids[account.email]!, role: 'authenticated' }, (pg) =>
+      pg.query(`select public.create_company('Outra empresa (ambiente local)')`),
+    );
+  }
   if (options.demo) await seedDemo(db, ids['dono@local.test']!);
   return { accounts: LOCAL_ACCOUNTS.map((a) => ({ ...a, password: LOCAL_PASSWORD })) };
 }

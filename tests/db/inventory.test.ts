@@ -107,9 +107,11 @@ describe('cadastro de itens (US-1.1, US-1.2)', () => {
     ).rejects.toThrow(/tipo e a unidade não podem mudar/);
   });
 
-  it('só o dono cadastra; leitura e produção recebem erro de permissão', async () => {
-    await expect(env.as(leitura, (s) => s.rpc('save_item', { p_item: { kind: 'COMPONENT', name: 'Ímã 6mm' } }))).rejects.toThrow(/permissão/);
-    await expect(env.as(producao, (s) => s.rpc('save_item', { p_item: { kind: 'COMPONENT', name: 'Ímã 6mm' } }))).rejects.toThrow(/permissão/);
+  it('todo membro da empresa cadastra; quem não é membro recebe erro de permissão', async () => {
+    await expect(env.as(leitura, (s) => s.rpc('save_item', { p_item: { kind: 'COMPONENT', name: 'Ímã 6mm' } }))).resolves.toBeDefined();
+    await expect(env.as(producao, (s) => s.rpc('save_item', { p_item: { kind: 'COMPONENT', name: 'Ímã 8mm' } }))).resolves.toBeDefined();
+    const estranho = await env.createUser('estranho@outra.test');
+    await expect(env.as(estranho, (s) => s.rpc('save_item', { p_item: { kind: 'COMPONENT', name: 'Ímã 10mm' } }))).rejects.toThrow(/permissão/);
   });
 });
 
@@ -314,11 +316,11 @@ describe('segurança básica', () => {
     expect(rows).toEqual([]);
   });
 
-  it('produção não lê tabelas com valores financeiros', async () => {
-    const rows = await env.as(producao, (s) => s.query(`select * from public.stock_balances`));
-    expect(rows).toEqual([]);
-    const lancamentos = await env.as(producao, (s) => s.query(`select * from public.result_entries`));
-    expect(lancamentos).toEqual([]);
+  it('quem não é membro não lê as tabelas da empresa', async () => {
+    const estranho = await env.createUser('estranho2@outra.test');
+    expect(await env.as(estranho, (s) => s.query(`select * from public.stock_balances`))).toEqual([]);
+    expect(await env.as(estranho, (s) => s.query(`select * from public.result_entries`))).toEqual([]);
+    expect((await env.as(producao, (s) => s.query(`select * from public.stock_balances`))).length).toBeGreaterThan(0);
   });
 
   it('auditoria registra cadastros e operações', async () => {

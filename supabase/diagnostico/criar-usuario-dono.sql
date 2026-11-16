@@ -12,6 +12,7 @@ declare
   v_password text := 'troque-esta-senha';
   v_name text := 'Seu nome';
   v_id uuid;
+  v_company uuid;
 begin
   if char_length(v_password) < 8 then
     raise exception 'Use uma senha com pelo menos 8 caracteres.';
@@ -39,8 +40,17 @@ begin
            email_confirmed_at = coalesce(email_confirmed_at, now()), updated_at = now()
      where id = v_id;
   end if;
-  insert into public.app_members (user_id, role, active) values (v_id, 'dono', true)
-  on conflict (user_id) do update set role = 'dono', active = true;
+  -- Empresa: usa a primeira que existir; se não houver nenhuma, cria "Wabee" com os dados iniciais.
+  select c.id into v_company from public.companies c order by c.created_at limit 1;
+  if v_company is null then
+    insert into public.companies (name, created_by) values ('Wabee', v_id) returning id into v_company;
+    insert into public.company_members (company_id, user_id, role, active) values (v_company, v_id, 'dono', true);
+    -- Os dados iniciais são gravados "como" o dono (as regras de empresa conferem o vínculo).
+    perform set_config('request.jwt.claims', jsonb_build_object('sub', v_id)::text, true);
+    perform private.seed_company(v_company, 'Wabee');
+  end if;
+  insert into public.company_members (company_id, user_id, role, active) values (v_company, v_id, 'dono', true)
+  on conflict (company_id, user_id) do update set role = 'dono', active = true;
   insert into public.profiles (id, display_name) values (v_id, v_name)
   on conflict (id) do update set display_name = excluded.display_name;
   raise notice 'Conta % pronta como dono.', v_email;

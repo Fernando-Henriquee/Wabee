@@ -59,7 +59,7 @@ const seeded = await seedLocal(db, auth, { demo: options.demo });
 const CORS_HEADERS = {
   'access-control-allow-methods': 'GET,HEAD,POST,PATCH,PUT,DELETE,OPTIONS',
   'access-control-allow-headers':
-    'authorization,apikey,content-type,prefer,range,x-client-info,accept-profile,content-profile,x-upsert,accept,x-supabase-api-version,cache-control,x-retry-count,x-metadata',
+    'authorization,apikey,content-type,prefer,range,x-client-info,accept-profile,content-profile,x-upsert,accept,x-supabase-api-version,cache-control,x-retry-count,x-metadata,x-company-id',
   'access-control-expose-headers': 'content-range,content-type,x-supabase-api-version',
   'access-control-max-age': '600',
 };
@@ -232,22 +232,47 @@ async function handleStorage(req: IncomingMessage, res: ServerResponse, url: URL
   }
 }
 
+/**
+ * Função de borda invite-member (emulada): confere o dono e registra o convite pela mesma RPC do banco.
+ * No ambiente local não há e-mail; a pessoa convidada vê o convite ao entrar com a conta dela.
+ */
+async function handleInviteMember(req: IncomingMessage, res: ServerResponse) {
+  const claims = claimsFor(req);
+  if (claims.role !== 'authenticated') return sendJson(res, 401, { error: 'Entre novamente para convidar.' });
+  const body = (parseJson(await readBody(req)) ?? {}) as { email?: string; company_id?: string };
+  try {
+    await db.asRole(
+      claims,
+      (pg) => pg.query(`select public.invite_member($1)`, [String(body.email ?? '')]),
+      { 'x-company-id': String(body.company_id ?? '') },
+    );
+    return sendJson(res, 200, { invited: true });
+  } catch (error) {
+    return sendJson(res, 400, { error: error instanceof Error ? error.message : 'Não foi possível convidar.' });
+  }
+}
+
 async function handleLocalAdmin(req: IncomingMessage, res: ServerResponse, url: URL) {
   if (req.headers['x-local-admin'] !== adminToken) return sendJson(res, 403, { message: 'Token administrativo local inválido' });
   if (url.pathname === '/local-admin/users' && req.method === 'POST') {
-    const body = parseJson(await readBody(req)) as { email?: string; password?: string; name?: string; role?: string };
+    const body = parseJson(await readBody(req)) as { email?: string; password?: string; name?: string; role?: string; company?: string };
     const email = (body.email ?? '').trim().toLowerCase();
     const role = body.role ?? 'dono';
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return sendJson(res, 400, { message: 'E-mail inválido' });
     if (!body.password || body.password.length < 8) return sendJson(res, 400, { message: 'A senha precisa ter pelo menos 8 caracteres' });
-    if (!['dono', 'producao', 'leitura'].includes(role)) return sendJson(res, 400, { message: 'Perfil inválido (dono, producao ou leitura)' });
+    if (!['dono', 'membro'].includes(role)) return sendJson(res, 400, { message: 'Perfil inválido (dono ou membro)' });
     const userId = await auth.createUser(email, body.password, body.name?.trim() || undefined);
-    await db.admin((pg) =>
-      pg.query(
-        `insert into public.app_members (user_id, role) values ($1, $2) on conflict (user_id) do update set role = excluded.role, active = true`,
-        [userId, role],
-      ),
-    );
+    await db.admin(async (pg) => {
+      // Sem "company": entra na primeira empresa do ambiente local.
+      const company = body.company
+        ? (await pg.query<{ id: string }>(`select id from public.companies where id::text = $1 or lower(name) = lower($1)`, [body.company])).rows[0]?.id
+        : (await pg.query<{ id: string }>(`select id from public.companies order by created_at limit 1`)).rows[0]?.id;
+      if (!company) throw new RestError(400, 'company', 'Empresa não encontrada');
+      await pg.query(
+        `insert into public.company_members (company_id, user_id, role) values ($1, $2, $3) on conflict (company_id, user_id) do update set role = excluded.role, active = true`,
+        [company, userId, role],
+      );
+    });
     return sendJson(res, 201, { id: userId, email, role });
   }
   return sendJson(res, 404, { message: 'Comando administrativo desconhecido' });
@@ -260,6 +285,13 @@ const server = createServer((req, res) => {
     handleLocalAdmin(req, res, url).catch((error: unknown) => {
       console.error(error);
       if (!res.headersSent) sendJson(res, 500, { message: 'Erro interno do emulador' });
+    });
+    return;
+  }
+  if (url.pathname === '/functions/v1/invite-member' && req.method === 'POST') {
+    handleInviteMember(req, res).catch((error: unknown) => {
+      console.error(error);
+      if (!res.headersSent) sendJson(res, 500, { error: 'Erro interno do emulador' });
     });
     return;
   }

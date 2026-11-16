@@ -243,9 +243,9 @@ describe('produtos, variações e fichas técnicas (US-4.1 a US-4.5)', () => {
     ]);
   });
 
-  it('leitura consulta custos mas não altera', async () => {
+  it('todo membro da empresa consulta custos e também edita', async () => {
     const pricing = await env.as(leitura, (s) => s.rpc<{ channels: unknown[] }>('variant_pricing', { p_variant_id: amarelo }));
     expect(pricing.channels.length).toBeGreaterThan(0);
-    await expect(env.as(leitura, (s) => s.rpc('save_product', { p_product: { name: 'X' } }))).rejects.toThrow(/permissão/);
+    await expect(env.as(leitura, (s) => s.rpc('save_product', { p_product: { name: 'X' } }))).resolves.toBeDefined();
   });
 });

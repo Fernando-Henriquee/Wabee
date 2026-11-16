@@ -38,23 +38,48 @@ Em **Authentication → URL Configuration**:
 - **Site URL**: o endereço do app na Vercel (ex.: `https://wabee.vercel.app`);
 - **Redirect URLs**: `https://<seu-dominio>/redefinir-senha` (e o domínio próprio, se houver).
 
-## Dar acesso a uma pessoa
+## Empresas, pessoas e convites
 
-1. **Authentication → Users → Invite user** com o e-mail da pessoa. Ela recebe o convite e define a senha.
-2. Dê o perfil:
-   ```bash
-   npm run member:add -- pessoa@exemplo.com producao "Nome da pessoa"
-   ```
-   Perfis: `dono`, `producao`, `leitura`. Depois disso o dono pode trocar o perfil ou desativar o acesso em **Configurações → Pessoas com acesso**.
+O Wabee é multi-empresa: cada **empresa** é um espaço isolado, e quem não é membro dela não vê nada. Uma conta pode ter a sua empresa e ser convidada para outras (seletor no menu da conta).
 
-Sem a linha em `app_members` a pessoa entra mas vê "sem acesso".
+- **Perfis**: `dono` (acesso a tudo e gerencia pessoas: convida, remove, muda o perfil) e `membro` (acesso a tudo da empresa, sem gerir pessoas).
+- **Convite pelo app**: o dono abre **Configurações → Pessoas da empresa**, digita o e-mail e envia. Quem já tem conta vê o convite ao entrar (menu da conta → "Convites"); quem não tem recebe o e-mail do Supabase, cria a senha e aceita o convite. O cadastro público continua desligado (`enable_signup = false`).
+- **Criar empresa**: qualquer conta logada cria a própria (menu da conta → "Nova empresa") e vira dona dela.
 
-Para criar a conta do dono direto pelo SQL Editor (sem convite por e-mail), use `supabase/diagnostico/criar-usuario-dono.sql`: troque e-mail, senha e nome no topo e execute. Se a conta já existir, o script só redefine a senha e garante o perfil de dono.
+### Função de convite (uma vez por projeto)
+
+O envio do e-mail usa a função de borda `invite-member` (`supabase/functions/invite-member/`). Ela é a única que usa a chave administrativa (`service_role`), que existe só no ambiente da função, nunca no navegador.
+
+```bash
+supabase functions deploy invite-member
+supabase secrets set SITE_URL=https://<seu-dominio>
+```
+
+`SITE_URL` é o endereço do app (o link do e-mail leva para `/redefinir-senha`). Sem a função publicada, o botão de convite mostra erro.
+
+### Caminho administrativo (sem o app)
+
+Para liberar uma conta já criada em **Authentication → Users** numa empresa:
+
+```bash
+npm run member:add -- pessoa@exemplo.com membro "Nome da pessoa" "Nome da empresa"
+```
+
+O último argumento (id ou nome da empresa) pode ser omitido se só existir uma. Para criar a conta do dono direto pelo SQL Editor, use `supabase/diagnostico/criar-usuario-dono.sql`: troque e-mail, senha e nome no topo e execute. Se não existir empresa, ele cria a "Wabee".
+
+### Como o isolamento funciona
+
+- Toda tabela de negócio tem `company_id`; a RLS só deixa passar linhas da **empresa ativa** da pessoa. O app envia a empresa escolhida no cabeçalho `x-company-id`; o banco confere o vínculo (`private.company_id()`), e sem vínculo nenhuma linha volta.
+- Tabelas e funções pertencem ao papel `wabee_owner`, sem `BYPASSRLS`, e as tabelas têm `FORCE ROW LEVEL SECURITY`. Por isso as RPCs `security definer` também só enxergam a empresa ativa: um id de outra empresa devolve "não encontrado".
+- As chaves estrangeiras entre tabelas de negócio são compostas `(company_id, id)`: nada aponta para dado de outra empresa.
+- Fotos ficam em `{id-da-empresa}/{pasta}/{arquivo}` no bucket; só quem é da empresa envia ou apaga. O bucket continua público: quem tiver o link de uma foto a vê.
+- **Tabela nova**: crie com `company_id uuid not null default private.company_id()` (FK para `companies`) e termine a migration com `select private.apply_grants();` (ele liga RLS forçada, políticas e dono). O teste `tests/db/tenancy.test.ts` falha se uma tabela ficar sem essa proteção.
+- **Finanças pessoais** (`pf_*`) são da conta, fora de qualquer empresa.
 
 ## Modelo de segurança
 
-- **RLS em todas as tabelas.** Quem não é membro ativo não lê nada. A produção não lê tabelas financeiras e vê os custos como vazios nas views `v_*`.
-- **Escrita só por RPC.** O perfil `authenticated` só tem `SELECT`. Cada função confere o perfil (`private.assert_role`), valida os dados e registra na auditoria.
+- **RLS em todas as tabelas.** Quem não é membro ativo da empresa não lê nada dela.
+- **Escrita só por RPC.** O perfil `authenticated` só tem `SELECT`. Cada função confere o acesso à empresa (`private.assert_role`) e, nas ações de gestão, o perfil dono, valida os dados e registra na auditoria.
 - **Funções internas** ficam no schema `private`, sem acesso pela API. Só as poucas usadas por políticas e views têm `EXECUTE` (lista em `private.apply_grants()`, chamada no fim de cada migration).
 - **Mês fechado** bloqueia lançamentos e estornos com data nele (`private.assert_open_period`).
 

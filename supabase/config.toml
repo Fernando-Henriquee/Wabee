@@ -33,3 +33,9 @@ secure_password_change = true
 [storage]
 enabled = true
 file_size_limit = "25MiB"
+
+# Convite de pessoas para uma empresa (precisa do secret SITE_URL: docs/SUPABASE.md).
+[functions.invite-member]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/invite-member/index.ts"

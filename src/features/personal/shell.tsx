@@ -3,9 +3,8 @@ import { useState } from 'react';
 import { NavLink, Outlet, useSearchParams } from 'react-router';
 import { Page } from '@/components/layout/page';
 import { Button } from '@/components/ui/button';
-import { EmptyState, ErrorState, LoadingBlock } from '@/components/ui/states';
+import { ErrorState, LoadingBlock } from '@/components/ui/states';
 import { usePfSpaceReady } from '@/data/personal';
-import { useMember } from '@/features/member/member-context';
 import { cn } from '@/lib/cn';
 import { PersonalActionsContext } from './actions';
 import { PrivacyProvider, PrivacyToggle } from './privacy';
@@ -21,18 +20,10 @@ const TABS = [
 
 /** Moldura da aba Pessoal: separada do resto do sistema, com abas internas e o botão de lançar. */
 export function PersonalShell() {
-  const { can } = useMember();
   const ready = usePfSpaceReady();
   const [params, setParams] = useSearchParams();
   const [add, setAdd] = useState<{ open: boolean; date?: string }>({ open: params.get('novo') === '1' });
 
-  if (!can('write')) {
-    return (
-      <Page>
-        <EmptyState icon={<Lock />} title="Só para o perfil Dono" description="As finanças pessoais ficam disponíveis apenas para quem tem perfil Dono." />
-      </Page>
-    );
-  }
   if (ready.isError) return <Page><ErrorState error={ready.error} onRetry={() => void ready.refetch()} /></Page>;
   if (!ready.data) return <Page><LoadingBlock /></Page>;
 
@@ -52,7 +43,7 @@ export function PersonalShell() {
         <div className="border-b border-info/20 bg-info-soft/60">
           <div className="mx-auto flex w-full max-w-6xl items-center gap-2 px-4 py-1.5 text-xs text-info sm:px-6">
             <Lock className="size-3.5 shrink-0" aria-hidden />
-            <span className="min-w-0 flex-1">Pessoal: separado da empresa. Só você e quem você convidou veem.</span>
+            <span className="min-w-0 flex-1">Pessoal: da sua conta, separado de qualquer empresa. Só você e quem você convidou veem.</span>
             <PrivacyToggle />
           </div>
         </div>

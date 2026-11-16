@@ -48,6 +48,8 @@ function buildSession(db: PGlite): Session {
  * disparando as verificações adiadas (constraint triggers).
  */
 export class TestEnv {
+  private adminContextSet = false;
+
   private constructor(readonly db: PGlite) {}
 
   static async create(options?: TestDbOptions): Promise<TestEnv> {
@@ -71,22 +73,63 @@ export class TestEnv {
     return row.id;
   }
 
-  /** Cria um usuário com acesso ao sistema no perfil indicado (dono, producao ou leitura). */
-  async createMember(email: string, role: 'dono' | 'producao' | 'leitura' = 'dono', displayName?: string): Promise<string> {
+  /** Empresa criada pela migration (recebe os dados iniciais): a "empresa padrão" dos testes. */
+  async defaultCompany(): Promise<string> {
+    const row = await this.admin().one<{ id: string }>(`select id from public.companies order by created_at limit 1`);
+    return row.id;
+  }
+
+  /**
+   * Cria um usuário membro da empresa indicada (padrão: a empresa inicial).
+   * Papéis: dono ou membro. 'producao' e 'leitura' são aceitos só por compatibilidade e viram membro.
+   */
+  async createMember(
+    email: string,
+    role: 'dono' | 'membro' | 'producao' | 'leitura' = 'dono',
+    displayName?: string,
+    companyId?: string,
+  ): Promise<string> {
     const id = await this.createUser(email, displayName);
-    await this.admin().query(`insert into public.app_members (user_id, role) values ($1, $2)`, [id, role]);
+    const company = companyId ?? (await this.defaultCompany());
+    await this.admin().query(`insert into public.company_members (company_id, user_id, role) values ($1, $2, $3)`, [
+      company,
+      id,
+      role === 'dono' ? 'dono' : 'membro',
+    ]);
+    // Funções internas chamadas por admin() (superusuário) precisam de uma empresa ativa:
+    // vale o primeiro membro da empresa padrão, como o SQL Editor trabalhando "dentro" dela.
+    if (!this.adminContextSet && !companyId) {
+      this.adminContextSet = true;
+      await this.db.query(`select set_config('request.jwt.claims', $1, false), set_config('request.headers', $2, false)`, [
+        JSON.stringify({ sub: id, role: 'authenticated' }),
+        JSON.stringify({ 'x-company-id': company }),
+      ]);
+    }
     return id;
   }
 
-  async as<T>(userId: string | null, fn: (session: Session) => Promise<T>): Promise<T> {
+  /** Cria uma empresa nova (com dados iniciais) tendo `ownerId` como dono, pela própria RPC. */
+  async createCompany(ownerId: string, name: string): Promise<string> {
+    return this.as(ownerId, (s) => s.rpc<string>('create_company', { p_name: name }));
+  }
+
+  /**
+   * `company` escolhe a empresa ativa (cabeçalho x-company-id, como o app faz).
+   * Sem ela, vale a única empresa do usuário.
+   */
+  async as<T>(userId: string | null, fn: (session: Session) => Promise<T>, options: { company?: string } = {}): Promise<T> {
     await this.db.exec('begin');
     try {
       if (userId) {
         await this.db.query(`select set_config('request.jwt.claims', $1, true)`, [
           JSON.stringify({ sub: userId, role: 'authenticated' }),
         ]);
+        await this.db.query(`select set_config('request.headers', $1, true)`, [
+          options.company ? JSON.stringify({ 'x-company-id': options.company }) : '',
+        ]);
         await this.db.exec('set local role authenticated');
       } else {
+        await this.db.query(`select set_config('request.headers', '', true)`);
         await this.db.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ role: 'anon' })]);
         await this.db.exec('set local role anon');
       }
@@ -103,6 +146,7 @@ export class TestEnv {
   async serviceRole<T>(fn: (session: Session) => Promise<T>): Promise<T> {
     await this.db.exec('begin');
     try {
+      await this.db.query(`select set_config('request.headers', '', true)`);
       await this.db.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ role: 'service_role' })]);
       await this.db.exec('set local role service_role');
       const result = await fn(buildSession(this.db));

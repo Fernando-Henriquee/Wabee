@@ -1,3 +1,4 @@
+import { getActiveCompanyId } from './active-company';
 import { PHOTO_BUCKET } from './photo-url';
 import { supabase } from './supabase';
 
@@ -32,7 +33,10 @@ export async function resizePhoto(file: File): Promise<Blob> {
 
 /** Envia uma imagem já reduzida (resizePhoto) e devolve o caminho no bucket. */
 export async function uploadPhotoBlob(folder: PhotoFolder, blob: Blob): Promise<string> {
-  const path = `${folder}/${crypto.randomUUID()}.jpg`;
+  const company = getActiveCompanyId();
+  if (!company) throw new Error('Escolha uma empresa antes de enviar fotos.');
+  // A primeira pasta é a empresa: as regras do armazenamento só deixam gravar na pasta de uma empresa sua.
+  const path = `${company}/${folder}/${crypto.randomUUID()}.jpg`;
   const { error } = await supabase.storage.from(PHOTO_BUCKET).upload(path, blob, { contentType: 'image/jpeg', cacheControl: '31536000' });
   if (error) throw new Error(`Não foi possível enviar a foto: ${error.message}`);
   return path;

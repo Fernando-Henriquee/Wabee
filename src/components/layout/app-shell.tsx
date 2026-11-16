@@ -1,9 +1,10 @@
-import { LogOut, Menu as MenuIcon, Plus, UserRound } from 'lucide-react';
+import { Building2, Check, LogOut, Menu as MenuIcon, Plus, UserRound } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
 import { useAuth } from '@/features/auth/auth-context';
+import { CompanyDialog, useCompanies } from '@/features/member/company-gate';
 import { ROLE_LABELS, useMember } from '@/features/member/member-context';
 import { cn } from '@/lib/cn';
 import { LocalEnvBanner, OfflineBanner } from './banners';
@@ -47,45 +48,62 @@ function SidebarLink({ item, onNavigate }: { item: NavItem; onNavigate?: () => v
 
 function UserMenu({ compact = false }: { compact?: boolean }) {
   const { user, signOut } = useAuth();
-  const { role, settings } = useMember();
+  const { role, company } = useMember();
+  const { companies, invites, switchCompany } = useCompanies();
+  const [companyDialog, setCompanyDialog] = useState(false);
   const name = (user?.user_metadata?.display_name as string | undefined) ?? user?.email ?? '';
   return (
-    <Menu>
-      <MenuTrigger asChild>
-        <button
-          type="button"
-          className={cn('flex min-w-0 items-center gap-2 rounded-lg text-left hover:bg-subtle', compact ? 'p-1.5' : 'w-full px-2 py-2')}
-          aria-label="Menu da conta"
-        >
-          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-accent text-sm font-bold text-ink">
-            {name.slice(0, 1).toUpperCase() || <UserRound className="size-4" />}
-          </span>
-          {compact ? null : (
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-medium text-ink">{name}</span>
-              <span className="block truncate text-xs text-muted">{ROLE_LABELS[role]}</span>
+    <>
+      <Menu>
+        <MenuTrigger asChild>
+          <button
+            type="button"
+            className={cn('flex min-w-0 items-center gap-2 rounded-lg text-left hover:bg-subtle', compact ? 'p-1.5' : 'w-full px-2 py-2')}
+            aria-label="Menu da conta"
+          >
+            <span className="relative grid size-8 shrink-0 place-items-center rounded-full bg-accent text-sm font-bold text-ink">
+              {name.slice(0, 1).toUpperCase() || <UserRound className="size-4" />}
+              {invites.length > 0 ? <span className="absolute -right-0.5 -top-0.5 size-2.5 rounded-full bg-danger ring-2 ring-panel" aria-label="Convites pendentes" /> : null}
             </span>
-          )}
-        </button>
-      </MenuTrigger>
-      <MenuContent align={compact ? 'end' : 'start'}>
-        <div className="px-2.5 py-2 text-xs text-muted">
-          <p className="truncate font-medium text-ink">{user?.email}</p>
-          <p className="truncate">
-            {settings.company_name} · {ROLE_LABELS[role]}
-          </p>
-        </div>
-        <MenuSeparator />
-        <MenuItem asChild>
-          <Link to="/perfil">
-            <UserRound /> Meu perfil
-          </Link>
-        </MenuItem>
-        <MenuItem onSelect={() => void signOut('local')}>
-          <LogOut /> Sair
-        </MenuItem>
-      </MenuContent>
-    </Menu>
+            {compact ? null : (
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-medium text-ink">{name}</span>
+                <span className="block truncate text-xs text-muted">{company.name}</span>
+              </span>
+            )}
+          </button>
+        </MenuTrigger>
+        <MenuContent align={compact ? 'end' : 'start'}>
+          <div className="px-2.5 py-2 text-xs text-muted">
+            <p className="truncate font-medium text-ink">{user?.email}</p>
+            <p className="truncate">
+              {company.name} · {ROLE_LABELS[role]}
+            </p>
+          </div>
+          <MenuSeparator />
+          {companies.length > 1
+            ? companies.map((c) => (
+                <MenuItem key={c.id} onSelect={() => c.id !== company.id && switchCompany(c.id)}>
+                  {c.id === company.id ? <Check /> : <Building2 />} {c.name}
+                </MenuItem>
+              ))
+            : null}
+          <MenuItem onSelect={() => setCompanyDialog(true)}>
+            <Plus /> {invites.length > 0 ? `Convites (${invites.length}) e nova empresa` : 'Nova empresa'}
+          </MenuItem>
+          <MenuSeparator />
+          <MenuItem asChild>
+            <Link to="/perfil">
+              <UserRound /> Meu perfil
+            </Link>
+          </MenuItem>
+          <MenuItem onSelect={() => void signOut('local')}>
+            <LogOut /> Sair
+          </MenuItem>
+        </MenuContent>
+      </Menu>
+      <CompanyDialog open={companyDialog} onOpenChange={setCompanyDialog} />
+    </>
   );
 }
 

@@ -5,7 +5,7 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist', 'dev-dist', 'coverage', 'playwright-report', 'test-results', '.local-backend', '.claude', 'node_modules'] },
+  { ignores: ['dist', 'dev-dist', 'coverage', 'playwright-report', 'test-results', '.local-backend', '.claude', 'node_modules', 'supabase/functions'] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ['**/*.{ts,tsx}'],

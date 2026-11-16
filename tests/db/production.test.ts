@@ -323,17 +323,14 @@ describe('acabamento, falhas e estorno', () => {
 });
 
 describe('perfil Produção (US-0.3)', () => {
-  it('vê as impressões sem valores e não acessa as tabelas de custo', async () => {
+  it('todo membro vê as impressões com valores; quem não é da empresa não vê nada', async () => {
     const jobs = await env.as(producao, (s) => s.query<{ code: string; cost_total: string | null; qty_planned: number }>(`select code, cost_total, qty_planned from public.v_print_jobs`));
     expect(jobs.length).toBeGreaterThan(0);
-    expect(jobs.every((j) => j.cost_total === null)).toBe(true);
-    const outs = await env.as(producao, (s) => s.query<{ unit_total: string | null }>(`select unit_total from public.v_print_job_outputs`));
-    expect(outs.every((o) => o.unit_total === null)).toBe(true);
-    expect(await env.as(producao, (s) => s.query(`select * from public.print_jobs`))).toEqual([]);
-    const preview = await env.as(producao, (s) =>
-      s.rpc<{ cost: unknown }>('preview_print_job', { p_job: { equipment_id: printer, outputs: [{ variant_id: coracao, qty_planned: 1 }] } }),
-    );
-    expect(preview.cost).toBeNull();
+    expect(jobs.some((j) => j.cost_total !== null)).toBe(true);
+    expect((await env.as(producao, (s) => s.query(`select * from public.print_jobs`))).length).toBeGreaterThan(0);
+    const estranho = await env.createUser('estranho-prod@outra.test');
+    expect(await env.as(estranho, (s) => s.query(`select * from public.v_print_jobs`))).toEqual([]);
+    expect(await env.as(estranho, (s) => s.query(`select * from public.print_jobs`))).toEqual([]);
   });
 
   it('dono vê os valores nas mesmas views', async () => {
@@ -341,9 +338,10 @@ describe('perfil Produção (US-0.3)', () => {
     expect(jobs.every((j) => j.cost_total !== null)).toBe(true);
   });
 
-  it('produção não estorna impressão (só o dono)', async () => {
+  it('quem não é da empresa não estorna impressão (não acha o job)', async () => {
     const job = await env.admin().one<{ id: number }>(`select id from public.print_jobs where status = 'CONCLUIDA' order by id limit 1`);
-    await expect(env.as(producao, (s) => s.rpc('reverse_print_job', { p_request_id: rid(), p_print_job_id: job.id, p_reason: 'teste' }))).rejects.toThrow(/permissão/);
+    const estranho = await env.createUser('estranho-estorno@outra.test');
+    await expect(env.as(estranho, (s) => s.rpc('reverse_print_job', { p_request_id: rid(), p_print_job_id: job.id, p_reason: 'teste' }))).rejects.toThrow(/permissão/);
   });
 });
 
@@ -393,8 +391,6 @@ describe('quadro livre (cards de projeto)', () => {
     const plaBefore = n((await balance(pla)).qty_on_hand);
     const fgBefore = n((await balance(item)).qty_on_hand);
     await env.as(producao, (s) => s.rpc('complete_print_job', { p_request_id: rid(), p_print_job_id: job.print_job_id }));
-    // Produção não desfaz conclusão (é estorno, só o dono).
-    await expect(move(producao, job.print_job_id, 'PLANEJADA')).rejects.toThrow();
     await move(dono, job.print_job_id, 'PLANEJADA');
     expect(await status(job.print_job_id)).toBe('PLANEJADA');
     expect(n((await balance(pla)).qty_on_hand)).toBe(plaBefore);
