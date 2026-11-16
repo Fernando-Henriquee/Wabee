@@ -62,6 +62,8 @@ describe('anotar o orçamento (questionário)', () => {
 
   it('recusa foto de referência fora da pasta quotes/, mais de 3 fotos e cliente inexistente', async () => {
     await expect(create({ reference_photo_paths: ['products/x.jpg'] })).rejects.toThrow(/inválido/);
+    // Foto de antes das pastas por empresa continua aceita (o arquivo antigo segue no mesmo caminho).
+    await expect(create({ reference_photo_paths: ['quotes/antiga.jpg'] })).resolves.toBeDefined();
     await expect(create({ reference_photo_paths: [`${company}/quotes/1.jpg`, `${company}/quotes/2.jpg`, `${company}/quotes/3.jpg`, `${company}/quotes/4.jpg`] })).rejects.toThrow(/no máximo 3/);
     await expect(create({ customer_id: 99999 })).rejects.toThrow(/Cliente não encontrado/);
   });

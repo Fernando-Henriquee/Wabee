@@ -7,34 +7,10 @@
 -- link tem um UUID e não dá para adivinhar nem listar de outra empresa.
 -- =============================================================================
 
--- Arquivos e caminhos que já existem (todos da primeira empresa) ganham o prefixo da empresa.
-do $$
-declare
-  v_company text := (select c.id::text from public.companies c order by c.created_at limit 1);
-  v_uuid_prefix text := '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/';
-begin
-  update storage.objects set name = v_company || '/' || name
-   where bucket_id = 'product-photos' and name !~ v_uuid_prefix;
-
-  -- Sem gatilhos de auditoria: é correção de caminho feita pela migration, não ação de usuário.
-  alter table public.products disable trigger user;
-  alter table public.items disable trigger user;
-  alter table public.quote_requests disable trigger user;
-
-  update public.products set photo_path = v_company || '/' || photo_path
-   where photo_path is not null and photo_path !~ v_uuid_prefix;
-  update public.items set photo_path = v_company || '/' || photo_path
-   where photo_path is not null and photo_path !~ v_uuid_prefix;
-  update public.quote_requests q
-     set reference_photo_paths = (select coalesce(array_agg(case when x ~ v_uuid_prefix then x else v_company || '/' || x end), '{}') from unnest(q.reference_photo_paths) x),
-         proposal_photo_paths = (select coalesce(array_agg(case when x ~ v_uuid_prefix then x else v_company || '/' || x end), '{}') from unnest(q.proposal_photo_paths) x)
-   where cardinality(q.reference_photo_paths) > 0 or cardinality(q.proposal_photo_paths) > 0;
-
-  alter table public.products enable trigger user;
-  alter table public.items enable trigger user;
-  alter table public.quote_requests enable trigger user;
-end;
-$$;
+-- Arquivos que já existem NÃO são renomeados aqui: o nome em storage.objects é só metadado e o arquivo
+-- guardado no Storage continua na chave antiga, então renomear por SQL quebraria a imagem. As fotos
+-- antigas seguem funcionando pelo link público (o bucket é público); só as novas usam a pasta da empresa.
+-- Para mover uma foto antiga, use a API do Storage (move) e atualize o caminho dela.
 
 drop policy product_photos_read on storage.objects;
 drop policy product_photos_insert on storage.objects;
@@ -132,7 +108,8 @@ begin
     raise exception 'Anexe no máximo 3 fotos de referência.' using errcode = '22023';
   end if;
   foreach v_path in array v_paths loop
-    if v_path !~ v_pattern then
+    -- Aceita também o caminho antigo (quotes/arquivo), de antes de as fotos terem pasta por empresa.
+    if v_path !~ v_pattern and v_path !~ '^quotes/[A-Za-z0-9._-]{1,120}$' then
       raise exception 'Caminho de foto inválido.' using errcode = '22023';
     end if;
   end loop;

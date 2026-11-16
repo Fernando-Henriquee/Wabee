@@ -33,6 +33,10 @@ end;
 $$;
 
 grant wabee_owner to current_user;
+-- No Supabase o postgres não pode dar USAGE no schema auth (não tem grant option; o GRANT só emite aviso),
+-- mas pode dar o papel authenticated, que já tem o que as funções precisam (auth.uid(), schema extensions).
+-- Atributos como BYPASSRLS não são herdados por pertencer a um papel, então wabee_owner segue sujeito à RLS.
+grant authenticated to wabee_owner;
 grant usage on schema public, private, auth, extensions to wabee_owner;
 grant create on schema public, private to wabee_owner;
 grant select on auth.users to wabee_owner;
